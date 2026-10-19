@@ -1,0 +1,25 @@
+{:paths ["src" "test"]
+ :tasks
+ {:requires ([pipeline.cli :as cli])
+
+  ohje         {:doc "Näytä komennot ja niiden käyttö"
+                :task (cli/-main "help")}
+  config       {:doc "Tulosta projektin yhdistetty konfiguraatio"
+                :task (apply cli/-main "config" *command-line-args*)}
+  setup-labels {:doc "Luo linjaston labelit projektirepoon"
+                :task (apply cli/-main "setup-labels" *command-line-args*)}
+  next         {:doc "Näytä prioriteettijono"
+                :task (apply cli/-main "next" *command-line-args*)}
+  run-issue    {:doc "Toteuta issue omalla koneella: bb run-issue 42"
+                :task (apply cli/-main "run-issue" *command-line-args*)}
+  run-next     {:doc "Ota jonosta seuraavat issuet (systemd-timer)"
+                :task (apply cli/-main "run-next" *command-line-args*)}
+  review-round {:doc "Yksi katselmointikierros: bb review-round 17"
+                :task (apply cli/-main "review-round" *command-line-args*)}
+  review-loop  {:doc "Kierroksia kunnes valmis (paikallinen testaus)"
+                :task (apply cli/-main "review-loop" *command-line-args*)}
+  mark-merged  {:doc "Merkitse PR:n issue developissa olevaksi"
+                :task (apply cli/-main "mark-merged" *command-line-args*)}
+  test         {:doc "Aja yksikkötestit"
+                :requires ([pipeline.test-runner :as tr])
+                :task (tr/run)}}}

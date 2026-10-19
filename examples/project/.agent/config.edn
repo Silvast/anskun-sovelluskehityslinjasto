@@ -1,0 +1,21 @@
+;; Kopioi harrasteprojektisi .agent/config.edn:ksi.
+;; Kaikki avaimet ovat valinnaisia; oletukset: src/pipeline/config.clj
+{:base-branch "develop"
+ :test-cmd "bb test"            ; komento, joka ajetaan ennen PR:ää
+ :max-rounds 3
+ :max-issues-per-run 3
+
+ :roles {:implementer {:runner :pi
+                       ;; Tarkista liput: `pi --help`
+                       :args []}
+         ;; Paikallinen malli myöhemmin, esim. oma wrapper-skripti, joka lukee
+         ;; promptin stdinistä:
+         ;; :implementer {:runner :command :command ["/home/ansku/bin/local-agent"]}
+         :reviewer-a {:model "sonnet"}
+         :reviewer-b {:model "opus"}
+         :fixer {:model "sonnet"}}
+
+ ;; Prioriteetti labeleista (oletus) tai GitHub Projectista:
+ ;; :queue {:source :project
+ ;;         :project {:owner "Silvast" :number 1 :field "Priority" :order ["P0" "P1" "P2"]}}
+ }

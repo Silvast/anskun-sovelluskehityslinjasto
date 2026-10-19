@@ -1,0 +1,39 @@
+# Kopioi tämä harrasteprojektisi .github/workflows/-kansioon.
+name: Linjasto
+
+on:
+  pull_request:
+    types: [labeled, synchronize, closed]
+
+# Yksi ajo kerrallaan per PR. Fixerin push jonottaa seuraavan kierroksen.
+concurrency:
+  group: linjasto-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    if: >-
+      (github.event.action == 'synchronize' || github.event.label.name == 'agent:review')
+      && startsWith(github.head_ref, 'agent/issue-')
+      && contains(github.event.pull_request.labels.*.name, 'agent:review')
+    uses: Silvast/anskun-sovelluskehityslinjasto/.github/workflows/linjasto.yml@main
+    with:
+      command: review-round
+      pr-number: ${{ github.event.pull_request.number }}
+      head-ref: ${{ github.head_ref }}
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+
+  merged:
+    if: >-
+      github.event.action == 'closed'
+      && github.event.pull_request.merged
+      && startsWith(github.head_ref, 'agent/issue-')
+    uses: Silvast/anskun-sovelluskehityslinjasto/.github/workflows/linjasto.yml@main
+    with:
+      command: mark-merged
+      pr-number: ${{ github.event.pull_request.number }}
+      head-ref: ${{ github.event.pull_request.base.ref }}
+    secrets:
+      PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}

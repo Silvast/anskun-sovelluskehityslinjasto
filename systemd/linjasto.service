@@ -1,0 +1,17 @@
+# ~/.config/systemd/user/linjasto.service
+# Muokkaa polut ja ota käyttöön:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now linjasto.timer
+#   loginctl enable-linger $USER   # ajo myös uloskirjautuneena
+[Unit]
+Description=anskun-sovelluskehityslinjasto: toteuta jonon issuet
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/src/oma-projekti
+ExecStart=/usr/local/bin/bb --config %h/src/anskun-sovelluskehityslinjasto/bb.edn run-next
+# Pi ja gh löytyvät tavallisesti näistä:
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+TimeoutStartSec=4h

@@ -1,0 +1,11 @@
+# ~/.config/systemd/user/linjasto.timer
+[Unit]
+Description=Käynnistä linjasto iltaisin
+
+[Timer]
+OnCalendar=*-*-* 23:00
+# Ei kiinniottoa, jos kone oli kiinni ajastushetkellä.
+Persistent=false
+
+[Install]
+WantedBy=timers.target
