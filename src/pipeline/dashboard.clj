@@ -7,6 +7,7 @@
             [org.httpkit.server :as http]
             [pipeline.config :as config]
             [pipeline.events :as events]
+            [pipeline.queue :as queue]
             [pipeline.status :as status])
   (:import (java.net URLDecoder)))
 
@@ -19,9 +20,40 @@
                :tools (count (filter #(= "tool" (:type %)) evs))
                :errors (count (filter #(= "error" (:type %)) evs))))))
 
+;; --- Jono ---------------------------------------------------------------------
+;; Jono haetaan GitHubista projektin omalla konfiguraatiolla. Haku on hidas, joten
+;; tulos välimuistitetaan ja päivitetään taustalla korkeintaan minuutin välein.
+
+(def queue-ttl-ms 60000)
+(defonce queue-cache (atom {}))
+
+(defn- fetch-queue [project-dir repo]
+  (try
+    {:items (mapv #(select-keys % [:number :title])
+                  (queue/ready-issues (config/load-config project-dir) repo))}
+    (catch Exception e
+      {:error (first (str/split-lines (str (ex-message e))))})))
+
+(defn queue-state
+  "Palauttaa välimuistissa olevan jonon heti ja käynnistää taustahaun, jos se on vanha."
+  [project project-dir repo now-ms]
+  (let [{:keys [at loading] :as cached} (get @queue-cache project)]
+    (when (and project-dir repo (not loading)
+               (or (nil? at) (> (- now-ms at) queue-ttl-ms)))
+      (swap! queue-cache assoc-in [project :loading] true)
+      (future
+        (let [res (fetch-queue project-dir repo)]
+          (swap! queue-cache assoc project (assoc res :at (System/currentTimeMillis) :loading false)))))
+    (cond
+      (not (and project-dir repo)) {:error "Jono näkyy, kun projektissa on ajettu linjastoa tämän version jälkeen."}
+      (nil? at) {:loading true}
+      :else (dissoc cached :loading))))
+
 (defn project-state [project file now-ms alive?]
-  (let [rs (events/runs (events/read-events file))]
+  (let [rs (events/runs (events/read-events file))
+        latest-start (last (keep #(when (:project-dir (first %)) (first %)) rs))]
     {:name project
+     :queue (queue-state project (:project-dir latest-start) (:repo latest-start) now-ms)
      :runs (mapv #(run-summary % now-ms alive?) (reverse (take-last 40 rs)))}))
 
 (defn state [now-ms alive?]

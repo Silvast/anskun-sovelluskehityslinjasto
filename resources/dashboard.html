@@ -89,6 +89,15 @@ h2{font:700 .74rem/1 var(--mono);text-transform:uppercase;letter-spacing:.12em;c
 .run .when{font:400 .76rem var(--mono);color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
 .run .sub{grid-column:2/4;font:400 .78rem var(--mono);color:var(--muted)}
 
+.queue{display:flex;flex-direction:column;margin-bottom:22px;border:1px dashed var(--line);border-radius:8px;background:var(--surface)}
+.q{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;padding:9px 12px;border-bottom:1px dashed var(--line)}
+.q:last-child{border-bottom:0}
+.q .num{font:500 .82rem var(--mono);font-variant-numeric:tabular-nums}
+.q .title{overflow-wrap:anywhere}
+.q.next{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.q .tag{grid-column:2;font:500 .7rem var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--accent)}
+.q-note{padding:10px 12px;font-size:.85rem;color:var(--muted)}
+.q-note.err{color:var(--stop)}
 .empty{padding:40px 20px;text-align:center;color:var(--muted)}
 .empty code{background:var(--sunk);padding:2px 6px;border-radius:4px}
 </style>
@@ -107,7 +116,9 @@ h2{font:700 .74rem/1 var(--mono);text-transform:uppercase;letter-spacing:.12em;c
       <button class="follow" id="follow" type="button" aria-pressed="true" title="Seuraa uusinta ajoa ja vieritä alas">Seuraa uusinta</button></div>
     <div class="timeline" id="timeline" aria-live="polite"></div>
   </section>
-  <aside aria-label="Ajohistoria">
+  <aside aria-label="Jono ja ajohistoria">
+    <h2>Jonossa</h2>
+    <div class="queue" id="queue"></div>
     <h2>Ajot</h2>
     <div class="runs" id="runs"></div>
   </aside>
@@ -175,6 +186,19 @@ function evRow(e) {
   return `<div class="ev ${cls}"><span class="t">${clock(e.ts)}</span>${role}<span class="msg">${msg}</span></div>`;
 }
 
+function renderQueue(p, repo) {
+  const q = p.queue || {};
+  let html;
+  if (q.error) html = `<div class="q-note err">${esc(q.error)}</div>`;
+  else if (q.loading) html = `<div class="q-note">Haetaan jonoa GitHubista…</div>`;
+  else if (!q.items || !q.items.length) html = `<div class="q-note">Jono on tyhjä. Lisää issueen label <code>agent:ready</code>.</div>`;
+  else html = q.items.slice(0, 8).map((it, i) => `<div class="q${i === 0 ? " next" : ""}">
+      <span class="num">${ghLink(repo, "issues", it.number)}</span><span class="title">${esc(it.title)}</span>
+      ${i === 0 ? `<span class="tag">seuraavana</span>` : ""}</div>`).join("")
+      + (q.items.length > 8 ? `<div class="q-note">+ ${q.items.length - 8} muuta</div>` : "");
+  $("queue").innerHTML = html;
+}
+
 function renderRuns(p) {
   $("runs").innerHTML = p.runs.map(r => `<button class="run" aria-current="${r.run === S.run}" data-run="${esc(r.run)}">
       <span class="lamp ${lampClass(r)}"></span>
@@ -198,6 +222,7 @@ async function tick() {
     const p = currentProject();
     if (S.follow || !currentRun()) S.run = (p.runs[0] || {}).run;
     renderTabs(); renderRuns(p); renderNow(currentRun());
+    renderQueue(p, (p.runs.find(r => r.repo) || {}).repo);
     $("follow").setAttribute("aria-pressed", S.follow);
     if (S.run) {
       const { events } = await (await fetch(`/api/run?project=${encodeURIComponent(S.project)}&run=${encodeURIComponent(S.run)}`, {cache:"no-store"})).json();

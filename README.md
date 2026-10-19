@@ -92,7 +92,8 @@ saman terminaaliin:
 **Dashboard:** `bb dashboard` käynnistää paikallisen selainnäkymän osoitteeseen
 <http://localhost:8787> (vain 127.0.0.1, portti `--port`-lipulla). Siinä näkyvät kaikki
 projektit, joista on lokia: käynnissä olevan ajon vaihe ja agentti, tapahtumat
-reaaliajassa sekä ajohistoria. Sivu päivittyy kahden sekunnin välein.
+reaaliajassa, prioriteettijono (seuraavana vuorossa oleva issue korostettuna) sekä
+ajohistoria. Jono haetaan GitHubista minuutin välein. Sivu päivittyy kahden sekunnin välein.
 
 Toisesta terminaalista: `bb status -f` näyttää käynnissä olevan issuen, vaiheen,
 agentin ja viimeisimmät tapahtumat. Agentit ajetaan suoratoistotilassa

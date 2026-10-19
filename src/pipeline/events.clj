@@ -92,6 +92,7 @@
     (try (fs/create-dirs (fs/parent f)) (rotate! f) (catch Exception _ nil))
     (binding [*ctx* ctx]
       (emit! :run-start {:command command :target target :repo repo
+                         :project-dir (str (fs/canonicalize project-dir))
                          :pid (.pid (java.lang.ProcessHandle/current))}))
     ctx))
 
