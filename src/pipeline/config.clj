@@ -39,6 +39,10 @@
             :merging "agent:merging"
             :in-develop "agent:in-develop"}
    :merge {:method "squash" :delete-branch true}
+   ;; Pysyvä release-PR develop → main, johon kerätään developiin mergetyt issuet.
+   :release {:enabled true
+             :main-branch "main"
+             :title "Release: develop → main"}
    :roles {:implementer {:runner :pi
                          ;; Malli. nil = Pi:n oma oletusmalli.
                          ;; Etusijajärjestys: komentorivin --model > projektin config > tämä oletus.

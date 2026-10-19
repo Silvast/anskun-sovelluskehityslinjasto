@@ -105,7 +105,19 @@ agentin ja viimeisimmät tapahtumat. Agentit ajetaan suoratoistotilassa
 
 Prioriteetti tulee labeleista `prio:1`, `prio:2`, `prio:3` (sitten vanhin ensin) tai GitHub Projectin kentästä (`:queue {:source :project …}`).
 
-Issue ei sulkeudu automaattisesti, koska PR menee `developiin`, ei oletushaaraan. Sulje se, kun muutos on viety `mainiin`.
+## Release-PR develop → main
+
+Kun PR mergetään `developiin`, linjasto lisää issuen pysyvään release-PR:ään
+(`develop → main`) ja luo sen, jos sitä ei vielä ole. Rivit ovat muotoa
+`- Closes #13 · PR #14 · otsikko`, joten kun mergeät release-PR:n `mainiin`,
+GitHub sulkee listan issuet. Seuraava developiin mergetty issue avaa uuden release-PR:n.
+
+Release-PR päivittyy itsestään, kun `develop` liikkuu, joten sinulle jää vain
+katselmointi ja merge. Asetukset: `:release {:enabled true :main-branch "main" :title "…"}`.
+
+Jos auto-merge odottaa CI:tä, merge tapahtuu myöhemmin ja projektin workflow ajaa
+`mark-merged`-komennon PR:n sulkeutuessa. Ilman workflowta voit ajaa sen käsin:
+`bb mark-merged <pr>`.
 
 ## Review-silmukka
 

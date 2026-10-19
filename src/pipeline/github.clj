@@ -61,6 +61,15 @@
   (first (shell/json! ["gh" "pr" "list" "--repo" repo "--head" branch "--state" "open"
                        "--json" "number,url,labels"])))
 
+(defn open-pr-between
+  "Avoin PR haarasta head haaraan base, tai nil."
+  [repo head base]
+  (first (shell/json! ["gh" "pr" "list" "--repo" repo "--head" head "--base" base
+                       "--state" "open" "--json" "number,url,body"])))
+
+(defn edit-pr-body! [repo n body]
+  (shell/sh! ["gh" "pr" "edit" n "--repo" repo "--body-file" "-"] {:in body}))
+
 (defn create-pr!
   "Luo PR:n ja palauttaa sen numeron."
   [repo {:keys [base head title body]}]

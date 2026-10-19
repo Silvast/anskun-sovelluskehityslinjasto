@@ -11,6 +11,7 @@
             [pipeline.github :as gh]
             [pipeline.implement :as implement]
             [pipeline.prompts :as prompts]
+            [pipeline.release :as release]
             [pipeline.shell :as shell]))
 
 ;; --- Skeemat ---------------------------------------------------------------
@@ -143,12 +144,18 @@
     (gh/comment! repo pr-n (str "🛑 Linjasto pysähtyi: " reason))
     {:status :needs-human :pr pr-n :reason reason}))
 
-(defn- merge! [{:keys [cfg repo]} pr-n issue-n]
+(declare mark-merged)
+
+(defn- merge! [{:keys [cfg repo] :as ctx} pr-n issue-n]
   (let [labels (:labels cfg)
         how (gh/merge-pr! repo pr-n (:merge cfg))]
     (doseq [n (remove nil? [pr-n issue-n])]
       (gh/set-labels! repo n {:remove [(:review labels)] :add [(:merging labels)]}))
-    (events/phase! (if (= how :auto) "auto-merge päällä, odottaa CI:tä" "PR mergetty"))
+    (if (= how :auto)
+      ;; Merge tapahtuu myöhemmin, kun CI on vihreä. Workflow kutsuu silloin mark-merged.
+      (events/phase! "auto-merge päällä, odottaa CI:tä")
+      (do (events/phase! "PR mergetty")
+          (mark-merged ctx pr-n)))
     {:status :clean :pr pr-n :merge how}))
 
 (declare review-round*)
@@ -254,15 +261,23 @@
       (if (= :fixed (:status res)) (recur) res))))
 
 (defn mark-merged
-  "PR mergettiin developiin: issue saa labelin agent:in-develop."
-  [{:keys [cfg repo]} pr-n]
+  "PR mergettiin developiin: issue saa labelin agent:in-develop ja päätyy
+  release-PR:ään (develop → main). Turvallinen ajaa useasti."
+  [{:keys [cfg repo] :as ctx} pr-n]
   (let [labels (:labels cfg)
         pr (gh/pr repo pr-n)
-        issue-n (implement/issue-number-from-branch cfg (:headRefName pr))]
+        issue-n (implement/issue-number-from-branch cfg (:headRefName pr))
+        already? (when issue-n ((gh/label-names (gh/issue repo issue-n)) (:in-develop labels)))]
     (doseq [n (remove nil? [pr-n issue-n])]
       (gh/set-labels! repo n {:remove [(:merging labels) (:review labels)]
                               :add [(:in-develop labels)]}))
-    (when issue-n
-      (gh/comment! repo issue-n (str "✅ Toteutus on mergetty haaraan `" (:baseRefName pr)
-                                     "` (PR #" pr-n "). Sulje issue, kun muutos on viety mainiin.")))
-    {:status :marked :pr pr-n :issue issue-n}))
+    (let [release-n (when (and issue-n (get-in cfg [:release :enabled]))
+                      (release/ensure-release-pr! ctx {:issue issue-n :pr pr-n
+                                                       :title (:title (gh/issue repo issue-n))}))]
+      (when (and issue-n (not already?))
+        (gh/comment! repo issue-n
+                     (str "✅ Toteutus on mergetty haaraan `" (:baseRefName pr) "` (PR #" pr-n ")."
+                          (if release-n
+                            (str " Issue sulkeutuu, kun release-PR #" release-n " mergetään mainiin.")
+                            " Sulje issue, kun muutos on viety mainiin."))))
+      {:status :marked :pr pr-n :issue issue-n :release release-n})))

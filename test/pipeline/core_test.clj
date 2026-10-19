@@ -9,6 +9,7 @@
             [pipeline.implement :as implement]
             [pipeline.prompts :as prompts]
             [pipeline.queue :as queue]
+            [pipeline.release]
             [pipeline.review :as review]))
 
 (deftest deep-merge-test
@@ -169,3 +170,15 @@
       (is (= (str (babashka.fs/path (babashka.fs/canonicalize tmp) "proj-worktrees"))
              (config/worktree-root config/defaults (str proj "/.")))))
     (is (clojure.string/ends-with? (events/log-file (str proj "/.")) "/proj.jsonl"))))
+
+(deftest release-body-test
+  (let [b0 (pipeline.release/initial-body "develop" "main")
+        b1 (pipeline.release/add-line b0 {:issue 13 :pr 14 :title "change timeframe"})
+        b2 (pipeline.release/add-line b1 {:issue 13 :pr 14 :title "change timeframe"})
+        b3 (pipeline.release/add-line b2 {:issue 15 :pr 16 :title "x"})]
+    (is (str/includes? b1 "- Closes #13 · PR #14 · change timeframe"))
+    (is (= b1 b2) "sama issue ei tuplaannu")
+    (is (str/includes? b3 "- Closes #15 · PR #16 · x"))
+    (is (not (pipeline.release/includes-issue? b1 1)) "#1 ei osu riviin #13")
+    (testing "käsin muokattu runko ilman merkkiä"
+      (is (str/includes? (pipeline.release/add-line "oma teksti" {:issue 2}) "- Closes #2")))))
