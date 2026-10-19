@@ -4,6 +4,8 @@
             [cheshire.core :as json]
             [clojure.string :as str]))
 
+(declare tail)
+
 (defn log [& xs]
   (binding [*out* *err*]
     (println (str "[linjasto] " (str/join " " xs)))
@@ -21,7 +23,10 @@
                           ;; Stdin suljetaan aina, jottei mikään komento jää odottamaan syötettä.
                           true (assoc :in (or in ""))
                           env (assoc :extra-env env)))]
-    {:exit (:exit res) :out (:out res) :err (:err res)}))
+    ;; Kun stderr ohjataan konsoliin, :err on virta eikä merkkijono.
+    {:exit (:exit res)
+     :out (:out res)
+     :err (when (string? (:err res)) (:err res))}))
 
 (defn sh!
   "Kuten `sh`, mutta heittää jos exit-koodi ei ole 0. Palauttaa trimmatun stdoutin."
@@ -29,8 +34,12 @@
   (let [{:keys [exit out err]} (sh cmd opts)]
     (when-not (zero? exit)
       (throw (ex-info (str "Komento epäonnistui (exit " exit "): "
-                           (str/join " " (map str cmd))
-                           (when-not (str/blank? err) (str "\n" (str/trim err))))
+                           ;; Prompti voi olla argumenttina, joten pitkät argumentit lyhennetään.
+                           (str/join " " (map #(let [a (str %)] (if (> (count a) 80) (str (subs a 0 77) "…") a)) cmd))
+                           (when-not (str/blank? err) (str "\n" (str/trim err)))
+                           ;; Agenttiajoissa stderr menee konsoliin, joten liitetään stdoutin loppu.
+                           (when (and (str/blank? err) (not (str/blank? out)))
+                             (str "\n" (str/trim (tail out 2000)))))
                       {:type ::command-failed :cmd cmd :exit exit :out out :err err})))
     (str/trim (or out ""))))
 
