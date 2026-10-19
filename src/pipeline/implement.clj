@@ -5,6 +5,7 @@
             [clojure.string :as str]
             [pipeline.agents :as agents]
             [pipeline.config :as config]
+            [pipeline.events :as events]
             [pipeline.git :as git]
             [pipeline.github :as gh]
             [pipeline.prompts :as prompts]
@@ -24,7 +25,7 @@
 
 (defn- run-tests [cfg dir]
   (if-let [cmd (:test-cmd cfg)]
-    (do (shell/log "Ajetaan testit:" cmd)
+    (do (events/phase! (str "ajaa testit: " cmd))
         (let [{:keys [exit out err]} (shell/sh ["bash" "-lc" cmd] {:dir dir})]
           {:ok? (zero? exit) :output (shell/tail (str out "\n" err) 6000)}))
     {:ok? true :output nil}))
@@ -40,7 +41,7 @@
 (defn- fail! [{:keys [cfg repo]} n e]
   (let [labels (:labels cfg)
         msg (or (ex-message e) (str e))]
-    (shell/log "Issue" n "pysähtyi:" msg)
+    (events/emit! :error {:msg (str "issue " n " pysähtyi: " (first (str/split-lines msg)))})
     (gh/set-labels! repo n {:remove [(:working labels)] :add [(:needs-human labels)]})
     (gh/comment! repo n (str "🛑 Linjasto pysähtyi tämän issuen kohdalla.\n\n```\n"
                              (shell/tail msg 3000) "\n```\n\n"
@@ -48,8 +49,15 @@
                              "`, niin linjasto yrittää uudelleen."))
     {:status :needs-human :issue n :error msg}))
 
+(declare run-issue*)
+
 (defn run-issue
   "Toteuttaa issuen n ja avaa PR:n. Palauttaa {:status …}."
+  [ctx n]
+  (binding [events/*ctx* (assoc events/*ctx* :issue n)]
+    (run-issue* ctx n)))
+
+(defn- run-issue*
   [{:keys [cfg project-dir repo] :as ctx} n]
   (let [labels (:labels cfg)
         issue (gh/issue repo n)
@@ -57,17 +65,18 @@
         existing (gh/open-pr-for-branch repo branch)]
     (cond
       (not= "OPEN" (:state issue))
-      (do (shell/log "Issue" n "ei ole auki, ohitetaan.") {:status :skipped :issue n})
+      (do (events/phase! (str "issue " n " ei ole auki, ohitetaan")) {:status :skipped :issue n})
 
       existing
-      (do (shell/log "Issuella" n "on jo avoin PR" (:url existing) "– ohitetaan.")
+      (do (events/phase! (str "issuella " n " on jo avoin PR " (:url existing) ", ohitetaan"))
           {:status :skipped :issue n :pr (:number existing)})
 
       :else
       (try
-        (shell/log "Aloitetaan issue" n "–" (:title issue))
+        (events/phase! (str "aloitetaan issue #" n ": " (:title issue)) :title (:title issue))
         (gh/set-labels! repo n {:remove [(:ready labels) (:needs-human labels)]
                                 :add [(:working labels)]})
+        (events/phase! "luodaan worktree")
         (let [wt (git/prepare-worktree! project-dir (worktree-path cfg project-dir n)
                                         branch (:remote cfg) (:base-branch cfg))
               role (get-in cfg [:roles :implementer])
@@ -77,7 +86,7 @@
                     :base-branch (:base-branch cfg)
                     :test-cmd (or (:test-cmd cfg) "(ei määritelty)")
                     :language (:language cfg)}
-              result (agents/run-agent role {:dir wt
+              result (agents/run-agent role {:role :implementer :dir wt
                                              :prompt (prompts/prompt project-dir "implementer" vars)})]
           (when-not (git/commit-all! wt (str "#" n ": " (:title issue)))
             (throw (ex-info "Implementer ei tehnyt muutoksia." {})))
@@ -85,8 +94,8 @@
           ;; Testit. Jos ne epäonnistuvat, implementer saa yhden korjausyrityksen.
           (let [t1 (run-tests cfg wt)]
             (when-not (:ok? t1)
-              (shell/log "Testit epäonnistuivat, implementer yrittää korjata.")
-              (agents/run-agent role {:dir wt
+              (events/phase! "testit epäonnistuivat, implementer yrittää korjata")
+              (agents/run-agent role {:role :implementer :dir wt
                                       :prompt (prompts/prompt project-dir "implementer-fix-tests"
                                                               (assoc vars :test-output (:output t1)))})
               (git/commit-all! wt (str "#" n ": korjaa testit"))
@@ -94,6 +103,7 @@
               (let [t2 (run-tests cfg wt)]
                 (when-not (:ok? t2)
                   (throw (ex-info (str "Testit epäonnistuvat yhä:\n" (:output t2)) {}))))))
+          (events/phase! "pushataan ja avataan PR")
           (git/push! wt (:remote cfg) branch)
           (let [pr-n (gh/create-pr! repo {:base (:base-branch cfg)
                                           :head branch
@@ -106,7 +116,8 @@
             ;; PR:n label käynnistää review-workflow'n Actionsissa.
             (gh/add-labels! repo pr-n [(:review labels)])
             (git/remove-worktree! project-dir wt)
-            (shell/log "PR avattu:" pr-n)
+            (binding [events/*ctx* (assoc events/*ctx* :pr pr-n)]
+              (events/phase! (str "PR #" pr-n " avattu")))
             {:status :pr-opened :issue n :pr pr-n}))
         (catch Exception e
           (fail! ctx n e))))))

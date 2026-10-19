@@ -3,6 +3,7 @@
             [clojure.test :refer [deftest is testing]]
             [pipeline.agents :as agents]
             [pipeline.cli :as cli]
+            [pipeline.events :as events]
             [pipeline.config :as config]
             [pipeline.git :as git]
             [pipeline.implement :as implement]
@@ -103,10 +104,10 @@
     (is (= :claude-code (get-in cfg [:roles :fixer :runner])))))
 
 (deftest pi-command-test
-  (is (= ["pi" "-p" "P"] (agents/pi-command {:args []} "P")))
-  (is (= ["pi" "--model" "m" "-p" "P"] (agents/pi-command {:model "m"} "P")))
+  (is (= ["pi" "--mode" "json" "P"] (agents/pi-command {:args []} "P")))
+  (is (= ["pi" "--mode" "json" "--model" "m" "P"] (agents/pi-command {:model "m"} "P")))
   (testing ":model voittaa :args-listan --model-lipun"
-    (is (= ["pi" "--model" "uusi" "--thinking" "high" "-p" "P"]
+    (is (= ["pi" "--mode" "json" "--model" "uusi" "--thinking" "high" "P"]
            (agents/pi-command {:model "uusi" :args ["--model" "vanha" "--thinking" "high"]} "P")))))
 
 (deftest default-model-test
@@ -121,3 +122,50 @@
     (is (= "z" (get-in (cli/apply-model-overrides
                         (config/merge-project-config {:roles {:implementer {:model "x"}}}) ["z"])
                        [:roles :implementer :model])))))
+
+(defn- collect-events
+  "Ajaa f:n niin, että tapahtumat kerätään listaan eikä tulosteta."
+  [f]
+  (let [seen (atom [])]
+    (with-redefs [events/emit! (fn [t m] (swap! seen conj (assoc m :type (name t))))]
+      [(f) @seen])))
+
+(deftest pi-stream-test
+  (let [lines ["{\"type\":\"session\",\"version\":3}"
+               "{\"type\":\"tool_execution_start\",\"toolCallId\":\"c1\",\"toolName\":\"read\",\"args\":{\"path\":\"src/chart.ts\"}}"
+               "{\"type\":\"tool_execution_start\",\"toolCallId\":\"c2\",\"toolName\":\"bash\",\"args\":{\"command\":\"npm test\"}}"
+               "{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Valmis.\"}]}}"
+               "{\"type\":\"agent_settled\",\"aborted\":false}"]
+        [state seen] (collect-events #(reduce agents/pi-line {} lines))]
+    (is (= "Valmis." (:text state)))
+    (is (= [{:tool "lukee" :detail "src/chart.ts"} {:tool "ajaa" :detail "npm test"}]
+           (map #(select-keys % [:tool :detail]) (filter #(= "tool" (:type %)) seen)))))
+  (testing "virhe kerätään"
+    (let [[state _] (collect-events
+                     #(agents/pi-line {} "{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"error\",\"error\":\"403 FreeTierError\"}}"))]
+      (is (= ["403 FreeTierError"] (:errors state))))))
+
+(deftest claude-stream-test
+  (let [lines ["{\"type\":\"system\",\"subtype\":\"init\"}"
+               "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Katson diffin.\"},{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"git diff origin/develop...HEAD\"}}]}}"
+               "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"ok\",\"structured_output\":{\"findings\":[]}}"]
+        [state seen] (collect-events #(reduce agents/claude-line {} lines))]
+    (is (= {:findings []} (get-in state [:result :structured_output])))
+    (is (= ["agent-text" "tool"] (map :type seen)))
+    (is (= "ajaa" (:tool (second seen))))))
+
+(deftest events-test
+  (is (= "4 min 5 s" (events/duration-str 245000)))
+  (is (= "[implementer] muokkaa src/a.ts"
+         (events/describe {:type "tool" :role "implementer" :tool "muokkaa" :detail "src/a.ts"})))
+  (let [evs [{:type "run-start" :run "1"} {:type "phase" :run "1"}
+             {:type "run-start" :run "2"} {:type "phase" :run "2" :msg "x"}]]
+    (is (= ["2" "2"] (map :run (events/last-run evs))))))
+
+(deftest worktree-root-test
+  (let [tmp (str (babashka.fs/create-temp-dir))
+        proj (str (babashka.fs/create-dirs (babashka.fs/path tmp "proj")))]
+    (testing "\".\"-päätteinen polku ei vie worktreetä projektin sisään"
+      (is (= (str (babashka.fs/path (babashka.fs/canonicalize tmp) "proj-worktrees"))
+             (config/worktree-root config/defaults (str proj "/.")))))
+    (is (clojure.string/ends-with? (events/log-file (str proj "/.")) "/proj.jsonl"))))

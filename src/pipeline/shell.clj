@@ -2,6 +2,7 @@
   "Komentojen ajaminen ja lokitus."
   (:require [babashka.process :as p]
             [cheshire.core :as json]
+            [clojure.java.io :as io]
             [clojure.string :as str]))
 
 (declare tail)
@@ -55,3 +56,16 @@
   [s n]
   (let [s (or s "")]
     (if (> (count s) n) (str "…" (subs s (- (count s) n))) s)))
+
+(defn stream!
+  "Ajaa komennon ja kutsuu (on-line rivi) jokaiselle stdoutin riville sitä mukaa
+  kuin rivejä tulee. Stderr menee konsoliin. Palauttaa {:exit}."
+  [cmd {:keys [dir in env on-line]}]
+  (let [proc (p/process (mapv str cmd)
+                        (cond-> {:out :pipe :err :inherit :in (or in "")}
+                          dir (assoc :dir (str dir))
+                          env (assoc :extra-env env)))]
+    (with-open [r (io/reader (:out proc))]
+      (doseq [line (line-seq r)]
+        (on-line line)))
+    {:exit (:exit @proc)}))

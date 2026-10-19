@@ -3,11 +3,13 @@
             [clojure.pprint :as pp]
             [clojure.string :as str]
             [pipeline.config :as config]
+            [pipeline.events :as events]
             [pipeline.github :as gh]
             [pipeline.implement :as implement]
             [pipeline.queue :as queue]
             [pipeline.review :as review]
-            [pipeline.shell :as shell]))
+            [pipeline.shell :as shell]
+            [pipeline.status :as status]))
 
 (def usage
   "anskun-sovelluskehityslinjasto
@@ -22,6 +24,8 @@ Komennot (ajetaan projektirepon hakemistossa tai --project <hakemisto>):
   review-loop <pr>      Kierroksia kunnes valmis (paikallinen testaus)
   mark-merged <pr>      Merkitse PR:n issue developissa olevaksi
   config                Tulosta yhdistetty konfiguraatio
+  status [-f]           Viimeisimmän ajon tila; -f päivittää jatkuvasti
+  log                   Lokitiedoston polku (esim. tail -f $(linjasto log))
 
 Yleiset liput:
 
@@ -41,6 +45,7 @@ Esimerkki:
       (empty? xs) (assoc opts :args pos)
       (= a "--project") (recur (rest more) (assoc opts :project (first more)) pos)
       (= a "--model") (recur (rest more) (update opts :models (fnil conj []) (first more)) pos)
+      (#{"-f" "--follow"} a) (recur more (assoc opts :follow true) pos)
       :else (recur more opts (conj pos a)))))
 
 (def roles #{"implementer" "reviewer-a" "reviewer-b" "fixer"})
@@ -63,7 +68,7 @@ Esimerkki:
           models))
 
 (defn context [{:keys [project models]}]
-  (let [dir (str (fs/absolutize (or project ".")))
+  (let [dir (str (fs/canonicalize (or project ".")))
         cfg (apply-model-overrides (config/load-config dir) models)]
     {:cfg cfg
      :project-dir dir
@@ -100,7 +105,7 @@ Esimerkki:
       (loop [done [], left (:max-issues-per-run cfg)]
         (let [issue (when (pos? left) (queue/next-issue cfg (:repo ctx)))]
           (if-not issue
-            (do (shell/log "Valmis:" (count done) "issueta käsitelty.") done)
+            (do (events/phase! (str "jono tyhjä, käsitelty " (count done) " issueta")) done)
             (recur (conj done (implement/run-issue ctx (:number issue))) (dec left))))))))
 
 (defn setup-labels [{:keys [cfg repo]}]
@@ -114,27 +119,50 @@ Esimerkki:
       (gh/ensure-label! repo (get l k) color desc)
       (shell/log "Label" (get l k)))))
 
+(defn- result-status [res]
+  (cond (map? res) (some-> (:status res) name)
+        (sequential? res) (str (count res) " issueta")
+        :else "ok"))
+
+(defn- tracked
+  "Ajaa komennon tapahtumalokin kanssa: run-start, vaiheet, run-end."
+  [opts command target f]
+  (let [ctx (context opts)]
+    (binding [events/*ctx* (events/start-run! (:project-dir ctx) command target)]
+      (let [res (try (f ctx)
+                     (catch Exception e
+                       (events/emit! :run-end {:status "virhe"})
+                       (throw e)))]
+        (events/emit! :run-end {:status (result-status res)})
+        res))))
+
 (defn -main [& raw]
   (let [[cmd & rest-args] raw
-        {:keys [args] :as opts} (parse-args rest-args)]
+        {:keys [args] :as opts} (parse-args rest-args)
+        project-dir #(str (fs/canonicalize (or (:project opts) ".")))]
     (try
       (let [result
             (case cmd
               ("help" "--help" nil) (println usage)
               "config" (let [{:keys [cfg repo]} (context opts)]
                          (pp/pprint (assoc cfg :repo repo)))
+              "status" (status/show (project-dir) (:follow opts))
+              "log" (println (events/log-file (project-dir)))
               "setup-labels" (setup-labels (context opts))
               "next" (doseq [i (queue/ready-issues (:cfg (context opts)) (:repo (context opts)))]
                        (println (str "#" (:number i) "  " (:title i))))
-              "run-issue" (implement/run-issue (context opts) (need-number args))
-              "run-next" (run-next (context opts))
-              "review-round" (review/review-round (context opts) (need-number args))
-              "review-loop" (review/review-loop (context opts) (need-number args))
-              "mark-merged" (review/mark-merged (context opts) (need-number args))
+              "run-issue" (let [n (need-number args)]
+                            (tracked opts cmd (str "#" n) #(implement/run-issue % n)))
+              "run-next" (tracked opts cmd nil run-next)
+              "review-round" (let [n (need-number args)]
+                               (tracked opts cmd (str "PR #" n) #(review/review-round % n)))
+              "review-loop" (let [n (need-number args)]
+                              (tracked opts cmd (str "PR #" n) #(review/review-loop % n)))
+              "mark-merged" (let [n (need-number args)]
+                              (tracked opts cmd (str "PR #" n) #(review/mark-merged % n)))
               (do (println usage) (throw (ex-info (str "Tuntematon komento: " cmd) {}))))]
-        (when (map? result) (shell/log (pr-str result)))
         (when (and (map? result) (= :needs-human (:status result)))
           (System/exit 2)))
-      (catch clojure.lang.ExceptionInfo e
+      (catch Exception e
         (shell/log "Virhe:" (ex-message e))
         (System/exit 1)))))

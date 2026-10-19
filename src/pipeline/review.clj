@@ -6,6 +6,7 @@
             [cheshire.core :as json]
             [clojure.string :as str]
             [pipeline.agents :as agents]
+            [pipeline.events :as events]
             [pipeline.git :as git]
             [pipeline.github :as gh]
             [pipeline.implement :as implement]
@@ -135,6 +136,7 @@
         wt))))
 
 (defn- stop! [{:keys [cfg repo]} pr-n issue-n reason]
+  (events/emit! :error {:msg (str "pysähtyi: " (first (str/split-lines reason)))})
   (let [labels (:labels cfg)]
     (doseq [n (remove nil? [pr-n issue-n])]
       (gh/set-labels! repo n {:remove [(:review labels)] :add [(:needs-human labels)]}))
@@ -146,11 +148,18 @@
         how (gh/merge-pr! repo pr-n (:merge cfg))]
     (doseq [n (remove nil? [pr-n issue-n])]
       (gh/set-labels! repo n {:remove [(:review labels)] :add [(:merging labels)]}))
-    (shell/log "PR" pr-n "→" (name how))
+    (events/phase! (if (= how :auto) "auto-merge päällä, odottaa CI:tä" "PR mergetty"))
     {:status :clean :pr pr-n :merge how}))
+
+(declare review-round*)
 
 (defn review-round
   "Yksi katselmointikierros PR:lle. Palauttaa {:status :clean|:fixed|:needs-human|:skipped}."
+  [ctx pr-n]
+  (binding [events/*ctx* (assoc events/*ctx* :pr pr-n)]
+    (review-round* ctx pr-n)))
+
+(defn- review-round*
   [{:keys [cfg project-dir repo] :as ctx} pr-n]
   (let [labels (:labels cfg)
         pr (gh/pr repo pr-n)
@@ -158,6 +167,7 @@
         issue-n (implement/issue-number-from-branch cfg head)
         round (inc (last-round (gh/review-bodies repo pr-n)))
         max-rounds (:max-rounds cfg)]
+    (binding [events/*ctx* (cond-> events/*ctx* issue-n (assoc :issue issue-n))]
     (cond
       (not= "OPEN" (:state pr))
       {:status :skipped :reason "PR ei ole auki"}
@@ -171,7 +181,7 @@
 
       :else
       (try
-        (shell/log "PR" pr-n "kierros" round "/" max-rounds)
+        (events/phase! (str "katselmointikierros " round "/" max-rounds) :round round)
         (let [dir (ensure-checkout! ctx issue-n head)
               issue (when issue-n (gh/issue repo issue-n))
               diff (shell/tail (gh/pr-diff repo pr-n) (:max-diff-chars cfg))
@@ -187,12 +197,12 @@
               role-a (get-in cfg [:roles :reviewer-a])
               role-b (get-in cfg [:roles :reviewer-b])
               ;; Reviewer A
-              res-a (agents/run-agent role-a {:dir dir :schema reviewer-a-schema
+              res-a (agents/run-agent role-a {:role :reviewer-a :dir dir :schema reviewer-a-schema
                                               :prompt (prompts/prompt project-dir "reviewer-a"
                                                                       (assoc base-vars :focus (:focus role-a)))})
               findings-a (number-findings "A" (get-in res-a [:data :findings]))
               ;; Reviewer B näkee A:n löydökset ja voi kiistää ne
-              res-b (agents/run-agent role-b {:dir dir :schema reviewer-b-schema
+              res-b (agents/run-agent role-b {:role :reviewer-b :dir dir :schema reviewer-b-schema
                                               :prompt (prompts/prompt project-dir "reviewer-b"
                                                                       (assoc base-vars
                                                                              :focus (:focus role-b)
@@ -207,11 +217,14 @@
                                                             :findings all :blocking blocking
                                                             :disputes disputes})
                                         :comments (inline-comments all)})
+          (events/phase! (str "löydöksiä " (count all) ", blokkaavia " (count blocking)
+                              (when (seq disputes) (str ", kiistettyjä " (count disputes))))
+                         :findings (count all) :blocking (count blocking))
           (if (empty? blocking)
             (merge! ctx pr-n issue-n)
             ;; Fixer
             (let [res-f (agents/run-agent (get-in cfg [:roles :fixer])
-                                          {:dir dir :schema fixer-schema
+                                          {:role :fixer :dir dir :schema fixer-schema
                                            :prompt (prompts/prompt project-dir "fixer"
                                                                    (assoc base-vars :blocking
                                                                           (json/generate-string blocking {:pretty true})))})
@@ -219,7 +232,8 @@
               (gh/comment! repo pr-n (fixer-comment round (or (:data res-f)
                                                               {:summary (shell/tail (:text res-f) 2000)})))
               (if changed?
-                (do (let [bad (git/protected-violations
+                (do (events/phase! "pushataan korjaukset")
+                    (let [bad (git/protected-violations
                                (git/changed-files dir (:remote cfg) (:base-branch cfg))
                                (:protected-paths cfg))]
                       (when (seq bad)
@@ -229,7 +243,7 @@
                 (stop! ctx pr-n issue-n "fixer ei tehnyt muutoksia blokkaaviin löydöksiin.")))))
         (catch Exception e
           (stop! ctx pr-n issue-n (str "virhe kierroksella " round ":\n\n```\n"
-                                       (shell/tail (ex-message e) 3000) "\n```")))))))
+                                       (shell/tail (ex-message e) 3000) "\n```"))))))))
 
 (defn review-loop
   "Paikallinen ajo: kierroksia kunnes PR on puhdas tai pysähtyy.

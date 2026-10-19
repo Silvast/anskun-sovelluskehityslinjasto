@@ -8,6 +8,10 @@
                 :task (apply cli/-main "config" *command-line-args*)}
   setup-labels {:doc "Luo linjaston labelit projektirepoon"
                 :task (apply cli/-main "setup-labels" *command-line-args*)}
+  status       {:doc "Viimeisimmän ajon tila: bb status (-f seuraa)"
+                :task (apply cli/-main "status" *command-line-args*)}
+  log          {:doc "Tapahtumalokin polku"
+                :task (apply cli/-main "log" *command-line-args*)}
   next         {:doc "Näytä prioriteettijono"
                 :task (apply cli/-main "next" *command-line-args*)}
   run-issue    {:doc "Toteuta issue omalla koneella: bb run-issue 42"

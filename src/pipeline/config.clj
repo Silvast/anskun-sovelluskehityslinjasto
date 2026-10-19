@@ -89,5 +89,6 @@
 
 (defn worktree-root [cfg project-dir]
   (or (:worktree-root cfg)
-      (str (fs/path (fs/parent (fs/absolutize project-dir))
-                    (str (fs/file-name (fs/absolutize project-dir)) "-worktrees")))))
+      ;; canonicalize: "/x/proj/." → "/x/proj", jotta worktreet tulevat projektin viereen.
+      (let [dir (fs/canonicalize project-dir)]
+        (str (fs/path (fs/parent dir) (str (fs/file-name dir) "-worktrees"))))))

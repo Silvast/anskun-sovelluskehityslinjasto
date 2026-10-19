@@ -61,6 +61,8 @@ Aja projektin hakemistossa (tai anna `--project <hakemisto>`):
 | `bb review-round 17` | Actions | Yksi katselmointikierros |
 | `bb review-loop 17` | kone | Kierroksia kunnes valmis, testaukseen ilman Actionsia |
 | `bb mark-merged 17` | Actions | Issue saa labelin `agent:in-develop` |
+| `bb status` | kone | Viimeisimmän ajon tila; `bb status -f` päivittyy jatkuvasti |
+| `bb log` | kone | Tapahtumalokin polku |
 | `bb test` | | Linjaston omat yksikkötestit |
 
 Mallin voi vaihtaa ajokohtaisesti ilman konfiguraation muokkausta:
@@ -71,6 +73,24 @@ bb review-loop 7 --model reviewer-b=sonnet --model fixer=opus
 ```
 
 Etusijajärjestys: komentorivin `--model` voittaa projektin `.agent/config.edn`:n, ja se voittaa linjaston oletuksen (implementerille `opencode-go/minimax-m3`).
+
+## Seuranta
+
+Orkestroija kirjaa jokaisen vaiheen ja agentin työkalukutsun tapahtumalokiin
+`~/.local/state/linjasto/<projekti>.jsonl` (tai `$LINJASTO_STATE_DIR`) ja tulostaa
+saman terminaaliin:
+
+```
+18:26:04 aloitetaan issue #13: change timeframe
+18:26:04 [implementer] aloittaa (opencode-go/minimax-m3)
+18:26:05 [implementer] lukee src/chart.ts
+18:26:09 [implementer] muokkaa src/chart.ts
+18:26:12 [implementer] ajaa npm test
+```
+
+Toisesta terminaalista: `bb status -f` näyttää käynnissä olevan issuen, vaiheen,
+agentin ja viimeisimmät tapahtumat. Agentit ajetaan suoratoistotilassa
+(`pi --mode json`, `claude --output-format stream-json`), joten työkalukutsut näkyvät heti.
 
 ## Tilakone
 
