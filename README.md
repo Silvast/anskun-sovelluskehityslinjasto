@@ -63,6 +63,7 @@ Aja projektin hakemistossa (tai anna `--project <hakemisto>`):
 | `bb mark-merged 17` | Actions | Issue saa labelin `agent:in-develop` |
 | `bb status` | kone | Viimeisimmän ajon tila; `bb status -f` päivittyy jatkuvasti |
 | `bb log` | kone | Tapahtumalokin polku |
+| `bb dashboard` | kone | Selainnäkymä kaikista projekteista, oletus <http://localhost:8787> |
 | `bb test` | | Linjaston omat yksikkötestit |
 
 Mallin voi vaihtaa ajokohtaisesti ilman konfiguraation muokkausta:
@@ -87,6 +88,11 @@ saman terminaaliin:
 18:26:09 [implementer] muokkaa src/chart.ts
 18:26:12 [implementer] ajaa npm test
 ```
+
+**Dashboard:** `bb dashboard` käynnistää paikallisen selainnäkymän osoitteeseen
+<http://localhost:8787> (vain 127.0.0.1, portti `--port`-lipulla). Siinä näkyvät kaikki
+projektit, joista on lokia: käynnissä olevan ajon vaihe ja agentti, tapahtumat
+reaaliajassa sekä ajohistoria. Sivu päivittyy kahden sekunnin välein.
 
 Toisesta terminaalista: `bb status -f` näyttää käynnissä olevan issuen, vaiheen,
 agentin ja viimeisimmät tapahtumat. Agentit ajetaan suoratoistotilassa

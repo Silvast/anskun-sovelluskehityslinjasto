@@ -3,6 +3,7 @@
             [clojure.pprint :as pp]
             [clojure.string :as str]
             [pipeline.config :as config]
+            [pipeline.dashboard :as dashboard]
             [pipeline.events :as events]
             [pipeline.github :as gh]
             [pipeline.implement :as implement]
@@ -26,6 +27,7 @@ Komennot (ajetaan projektirepon hakemistossa tai --project <hakemisto>):
   config                Tulosta yhdistetty konfiguraatio
   status [-f]           Viimeisimmän ajon tila; -f päivittää jatkuvasti
   log                   Lokitiedoston polku (esim. tail -f $(linjasto log))
+  dashboard [--port n]  Paikallinen selainnäkymä kaikista projekteista (oletus 8787)
 
 Yleiset liput:
 
@@ -46,6 +48,7 @@ Esimerkki:
       (= a "--project") (recur (rest more) (assoc opts :project (first more)) pos)
       (= a "--model") (recur (rest more) (update opts :models (fnil conj []) (first more)) pos)
       (#{"-f" "--follow"} a) (recur more (assoc opts :follow true) pos)
+      (= a "--port") (recur (rest more) (assoc opts :port (parse-long (str (first more)))) pos)
       :else (recur more opts (conj pos a)))))
 
 (def roles #{"implementer" "reviewer-a" "reviewer-b" "fixer"})
@@ -128,7 +131,7 @@ Esimerkki:
   "Ajaa komennon tapahtumalokin kanssa: run-start, vaiheet, run-end."
   [opts command target f]
   (let [ctx (context opts)]
-    (binding [events/*ctx* (events/start-run! (:project-dir ctx) command target)]
+    (binding [events/*ctx* (events/start-run! (:project-dir ctx) command target (:repo ctx))]
       (let [res (try (f ctx)
                      (catch Exception e
                        (events/emit! :run-end {:status "virhe"})
@@ -148,6 +151,7 @@ Esimerkki:
                          (pp/pprint (assoc cfg :repo repo)))
               "status" (status/show (project-dir) (:follow opts))
               "log" (println (events/log-file (project-dir)))
+              "dashboard" (dashboard/serve! (or (:port opts) 8787))
               "setup-labels" (setup-labels (context opts))
               "next" (doseq [i (queue/ready-issues (:cfg (context opts)) (:repo (context opts)))]
                        (println (str "#" (:number i) "  " (:title i))))

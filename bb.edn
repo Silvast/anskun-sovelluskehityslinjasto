@@ -12,6 +12,8 @@
                 :task (apply cli/-main "status" *command-line-args*)}
   log          {:doc "Tapahtumalokin polku"
                 :task (apply cli/-main "log" *command-line-args*)}
+  dashboard    {:doc "Selainnäkymä: bb dashboard (--port 8787)"
+                :task (apply cli/-main "dashboard" *command-line-args*)}
   next         {:doc "Näytä prioriteettijono"
                 :task (apply cli/-main "next" *command-line-args*)}
   run-issue    {:doc "Toteuta issue omalla koneella: bb run-issue 42"

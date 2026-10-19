@@ -10,6 +10,7 @@
             [pipeline.prompts :as prompts]
             [pipeline.queue :as queue]
             [pipeline.release]
+            [pipeline.status]
             [pipeline.review :as review]))
 
 (deftest deep-merge-test
@@ -182,3 +183,16 @@
     (is (not (pipeline.release/includes-issue? b1 1)) "#1 ei osu riviin #13")
     (testing "käsin muokattu runko ilman merkkiä"
       (is (str/includes? (pipeline.release/add-line "oma teksti" {:issue 2}) "- Closes #2")))))
+
+(deftest status-summary-test
+  (let [evs [{:type "run-start" :run "1" :ts "2026-10-19T10:00:00Z" :pid 1 :command "run-issue"}
+             {:type "phase" :msg "luodaan worktree" :ts "2026-10-19T10:00:01Z" :issue 13}
+             {:type "agent-start" :role "implementer" :model "m" :ts "2026-10-19T10:00:02Z"}
+             {:type "tool" :role "implementer" :tool "lukee" :ts "2026-10-19T10:00:03Z"}]
+        now (.toEpochMilli (java.time.Instant/parse "2026-10-19T10:01:02Z"))
+        sm (pipeline.status/summarize evs now (constantly true))]
+    (is (= "implementer työskentelee" (:phase sm)))
+    (is (= "implementer" (get-in sm [:agent :role])))
+    (is (= 60000 (get-in sm [:agent :elapsed-ms])))
+    (is (= 13 (:issue sm)))
+    (is (= "keskeytynyt" (:state (pipeline.status/summarize evs now (constantly false)))))))

@@ -84,14 +84,14 @@
 
 (defn start-run!
   "Palauttaa kontekstin uudelle ajolle. Käytä: (binding [*ctx* (start-run! …)] …)."
-  [project-dir command target]
+  [project-dir command target & [repo]]
   (let [f (log-file project-dir)
         ctx {:run (str (System/currentTimeMillis))
              :project (str (fs/file-name (fs/canonicalize project-dir)))
              :log-file f}]
     (try (fs/create-dirs (fs/parent f)) (rotate! f) (catch Exception _ nil))
     (binding [*ctx* ctx]
-      (emit! :run-start {:command command :target target
+      (emit! :run-start {:command command :target target :repo repo
                          :pid (.pid (java.lang.ProcessHandle/current))}))
     ctx))
 
@@ -112,3 +112,24 @@
 
 (defn pid-alive? [pid]
   (boolean (some-> pid long java.lang.ProcessHandle/of (.orElse nil) .isAlive)))
+
+(defn runs
+  "Jakaa tapahtumat ajoiksi. Palauttaa vektorin tapahtumavektoreita, vanhin ensin."
+  [events]
+  ;; Ajot voivat lomittua (esim. run-issue ja review-loop rinnakkain), joten ryhmitellään.
+  (->> (group-by :run events)
+       vals
+       (map vec)
+       (filter #(= "run-start" (:type (first %))))
+       (sort-by #(or (parse-long (str (:run (first %)))) 0))
+       vec))
+
+(defn project-files
+  "Kaikki projektien lokitiedostot tilahakemistossa: {\"stonkstable\" \"/…/stonkstable.jsonl\"}."
+  []
+  (let [dir (state-dir)]
+    (if (fs/exists? dir)
+      (into (sorted-map)
+            (for [f (fs/glob dir "*.jsonl")]
+              [(str/replace (str (fs/file-name f)) #"\.jsonl$" "") (str f)]))
+      {})))

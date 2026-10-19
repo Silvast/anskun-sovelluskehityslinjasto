@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Linjasto</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,600..800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Linjaston valvomo: ajot asemina, tila opastinvaloina. */
+:root{
+  --bg:#f2f4f6; --surface:#fff; --sunk:#e8ecf0; --fg:#16202b; --muted:#5b6977; --line:#d3dae2;
+  --accent:#1d5fc4; --go:#23864f; --wait:#b7790b; --stop:#c23b31; --track:#2b3644;
+  --r-impl:#1d5fc4; --r-a:#7a4fd0; --r-b:#b8486d; --r-fix:#0f8577; --r-orc:#5b6977;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0d1218; --surface:#151c25; --sunk:#10161d; --fg:#e3e8ee; --muted:#8f9dad; --line:#29333f;
+  --accent:#6aa1f5; --go:#4cc584; --wait:#e9b44c; --stop:#f0776c; --track:#c6d0db;
+  --r-impl:#6aa1f5; --r-a:#ab8cf0; --r-b:#ec8aa9; --r-fix:#4fc6b6; --r-orc:#8f9dad;
+  color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--body)}
+a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+code,.mono{font-family:var(--mono);font-size:.86em}
+
+header{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding:14px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:0;z-index:2}
+.brand{display:flex;align-items:center;gap:10px;font:800 1.35rem/1 var(--display);font-stretch:80%;letter-spacing:-.01em}
+.brand .signals{display:flex;flex-direction:column;gap:3px}
+.brand .signals i{width:7px;height:7px;border-radius:50%;display:block}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;flex:1}
+.tab{font:500 .9rem var(--body);border:1px solid transparent;background:none;color:var(--muted);padding:.35rem .8rem;border-radius:6px;cursor:pointer}
+.tab:hover{color:var(--fg)}
+.tab[aria-selected="true"]{color:var(--fg);border-color:var(--line);background:var(--bg)}
+.tab:focus-visible,.run:focus-visible,.follow:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.updated{font:400 .78rem var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+
+main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;padding:20px max(16px,env(safe-area-inset-left,0px));max-width:1400px;margin:0 auto}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+section{min-width:0}
+h2{font:700 .74rem/1 var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:0 0 10px}
+
+.lamp{width:12px;height:12px;border-radius:50%;flex:none;background:var(--line)}
+.lamp.go{background:var(--go)} .lamp.stop{background:var(--stop)}
+.lamp.busy{background:var(--wait);box-shadow:0 0 0 0 var(--wait);animation:pulse 1.6s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--wait) 60%,transparent)}70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){.lamp.busy{animation:none}}
+
+.now{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 20px;display:grid;gap:14px;margin-bottom:20px}
+.now-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.now-title{font:750 1.6rem/1.1 var(--display);font-stretch:85%;margin:0}
+.state{font:500 .82rem var(--mono);color:var(--muted)}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 24px}
+.fact{min-width:0}
+.fact .k{font:500 .7rem var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.fact .v{font-weight:500;overflow-wrap:anywhere}
+.agent{display:flex;flex-direction:column;align-items:flex-start;gap:3px}
+.agent .model{font:400 .8rem var(--mono);color:var(--muted)}
+
+.chip{display:inline-block;font:500 .72rem var(--mono);padding:1px 7px;border-radius:4px;color:var(--surface);background:var(--r-orc);white-space:nowrap}
+.chip.implementer{background:var(--r-impl)} .chip.reviewer-a{background:var(--r-a)}
+.chip.reviewer-b{background:var(--r-b)} .chip.fixer{background:var(--r-fix)}
+
+.timeline-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.follow{font:500 .8rem var(--body);color:var(--muted);background:none;border:1px solid var(--line);border-radius:6px;padding:.25rem .6rem;cursor:pointer}
+.follow[aria-pressed="true"]{color:var(--accent);border-color:var(--accent)}
+.timeline{background:var(--surface);border:1px solid var(--line);border-radius:10px;max-height:62vh;overflow:auto}
+.ev{display:grid;grid-template-columns:72px 104px minmax(0,1fr);gap:10px;padding:6px 14px;border-bottom:1px solid var(--sunk);align-items:baseline}
+.ev:last-child{border-bottom:0}
+.ev .chip{justify-self:start}
+.ev .t{font:400 .78rem var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.ev .msg{overflow-wrap:anywhere}
+.ev.tool .msg{font-family:var(--mono);font-size:.84rem}
+.ev.tool .verb{color:var(--muted)}
+.ev.text .msg{color:var(--muted);font-style:italic}
+.ev.phase .msg{font-weight:600}
+.ev.error{background:color-mix(in srgb,var(--stop) 9%,transparent)} .ev.error .msg{color:var(--stop);font-weight:600}
+.ev.run-start,.ev.run-end{background:var(--sunk)}
+.ev.agent-end.fail .msg{color:var(--stop)}
+
+.runs{display:flex;flex-direction:column;gap:6px}
+.run{all:unset;display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer}
+.run:hover{border-color:var(--muted)}
+.run[aria-current="true"]{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.run .what{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.run .when{font:400 .76rem var(--mono);color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
+.run .sub{grid-column:2/4;font:400 .78rem var(--mono);color:var(--muted)}
+
+.empty{padding:40px 20px;text-align:center;color:var(--muted)}
+.empty code{background:var(--sunk);padding:2px 6px;border-radius:4px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="signals" aria-hidden="true"><i style="background:var(--go)"></i><i style="background:var(--wait)"></i><i style="background:var(--stop)"></i></span>Linjasto</div>
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Projektit"></nav>
+  <span class="updated" id="updated">ladataan…</span>
+</header>
+
+<main id="main">
+  <section aria-label="Valittu ajo">
+    <div id="now"></div>
+    <div class="timeline-head"><h2>Tapahtumat</h2>
+      <button class="follow" id="follow" type="button" aria-pressed="true" title="Seuraa uusinta ajoa ja vieritä alas">Seuraa uusinta</button></div>
+    <div class="timeline" id="timeline" aria-live="polite"></div>
+  </section>
+  <aside aria-label="Ajohistoria">
+    <h2>Ajot</h2>
+    <div class="runs" id="runs"></div>
+  </aside>
+</main>
+
+<script>
+const S = { projects: [], project: null, run: null, follow: true, now: 0 };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+const clock = (ts) => { try { return new Date(ts).toLocaleTimeString("fi-FI",{hour:"2-digit",minute:"2-digit",second:"2-digit"}); } catch { return ""; } };
+const day = (ts) => { try { const d = new Date(ts), t = new Date();
+  return d.toDateString() === t.toDateString() ? "tänään " + clock(ts).slice(0,5)
+       : d.toLocaleDateString("fi-FI",{day:"numeric",month:"numeric"}) + " " + clock(ts).slice(0,5); } catch { return ""; } };
+const dur = (ms) => { const s = Math.max(0, Math.floor((ms||0)/1000));
+  return s < 60 ? s + " s" : s < 3600 ? Math.floor(s/60) + " min " + (s%60) + " s" : Math.floor(s/3600) + " h " + Math.floor((s%3600)/60) + " min"; };
+
+function lampClass(r) {
+  if (!r) return "";
+  if (r["running?"]) return "busy";
+  if (/needs-human|virhe|keskeytynyt/.test(r.state)) return "stop";
+  return "go";
+}
+const ghLink = (repo, kind, n) => repo && n ? `<a href="https://github.com/${esc(repo)}/${kind}/${n}" target="_blank" rel="noopener">#${n}</a>` : (n ? "#" + n : "–");
+
+function renderTabs() {
+  $("tabs").innerHTML = S.projects.map(p =>
+    `<button class="tab" role="tab" aria-selected="${p.name === S.project}" data-p="${esc(p.name)}">${esc(p.name)}</button>`).join("");
+  $("tabs").querySelectorAll(".tab").forEach(b => b.onclick = () => {
+    S.project = b.dataset.p; S.run = null; S.follow = true; persist(); tick(); });
+}
+
+function currentProject() { return S.projects.find(p => p.name === S.project); }
+function currentRun() { const p = currentProject(); return p && p.runs.find(r => r.run === S.run); }
+
+function renderNow(r) {
+  if (!r) { $("now").innerHTML = ""; return; }
+  const agent = r.agent ? `<span class="agent"><span class="chip ${esc(r.agent.role)}">${esc(r.agent.role)}</span>
+      <span class="model">${esc(r.agent.model || "")} · ${dur(r.agent["elapsed-ms"])}</span></span>` : "–";
+  $("now").innerHTML = `<div class="now">
+    <div class="now-head"><span class="lamp ${lampClass(r)}"></span>
+      <h1 class="now-title">${esc(r.command)} ${esc(r.target || "")}</h1>
+      <span class="state">${esc(r.state)} · ${dur(r["elapsed-ms"])} · aloitettu ${esc(day(r.started))}</span></div>
+    <div class="facts">
+      <div class="fact"><div class="k">Issue</div><div class="v">${ghLink(r.repo,"issues",r.issue)} ${esc(r["issue-title"] || "")}</div></div>
+      <div class="fact"><div class="k">PR</div><div class="v">${ghLink(r.repo,"pull",r.pr)}</div></div>
+      <div class="fact"><div class="k">Vaihe</div><div class="v">${esc(r.phase || "–")}</div></div>
+      <div class="fact"><div class="k">Agentti nyt</div><div class="v">${agent}</div></div>
+    </div></div>`;
+}
+
+function evRow(e) {
+  const role = e.role ? `<span class="chip ${esc(e.role)}">${esc(e.role)}</span>` : `<span class="chip">linjasto</span>`;
+  let cls = e.type, msg;
+  switch (e.type) {
+    case "run-start": msg = `▶ ${esc(e.command)} ${esc(e.target || "")}`; break;
+    case "run-end": msg = `■ valmis: ${esc(e.status)}`; break;
+    case "agent-start": msg = `aloittaa${e.model ? " · " + esc(e.model) : ""}`; break;
+    case "agent-end": msg = `${e.ok ? "valmis" : "epäonnistui"} · ${dur(e.ms)}`; if (!e.ok) cls += " fail"; break;
+    case "tool": msg = `<span class="verb">${esc(e.tool)}</span> ${esc(e.detail || "")}`; break;
+    case "agent-text": cls = "text"; msg = esc(e.msg); break;
+    case "error": msg = "⚠ " + esc(e.msg); break;
+    default: msg = esc(e.msg || e.type);
+  }
+  return `<div class="ev ${cls}"><span class="t">${clock(e.ts)}</span>${role}<span class="msg">${msg}</span></div>`;
+}
+
+function renderRuns(p) {
+  $("runs").innerHTML = p.runs.map(r => `<button class="run" aria-current="${r.run === S.run}" data-run="${esc(r.run)}">
+      <span class="lamp ${lampClass(r)}"></span>
+      <span class="what">${esc(r.command)} ${esc(r.target || "")}</span>
+      <span class="when">${esc(day(r.started))}</span>
+      <span class="sub">${esc(r.state)} · ${dur(r["elapsed-ms"])} · ${r.tools} työkalukutsua${r.errors ? " · " + r.errors + " virhettä" : ""}</span>
+    </button>`).join("");
+  $("runs").querySelectorAll(".run").forEach(b => b.onclick = () => {
+    S.run = b.dataset.run; S.follow = S.run === (currentProject().runs[0] || {}).run; tick(); });
+}
+
+async function tick() {
+  try {
+    const st = await (await fetch("/api/state", {cache:"no-store"})).json();
+    S.projects = st.projects;
+    if (!S.projects.length) {
+      $("main").innerHTML = `<div class="empty" style="grid-column:1/-1">Ei vielä ajoja. Käynnistä esimerkiksi <code>linjasto run-issue 13</code> projektin hakemistossa.</div>`;
+      $("updated").textContent = "päivitetty " + clock(new Date()); return;
+    }
+    if (!currentProject()) S.project = S.projects[0].name;
+    const p = currentProject();
+    if (S.follow || !currentRun()) S.run = (p.runs[0] || {}).run;
+    renderTabs(); renderRuns(p); renderNow(currentRun());
+    $("follow").setAttribute("aria-pressed", S.follow);
+    if (S.run) {
+      const { events } = await (await fetch(`/api/run?project=${encodeURIComponent(S.project)}&run=${encodeURIComponent(S.run)}`, {cache:"no-store"})).json();
+      const tl = $("timeline");
+      const atBottom = tl.scrollHeight - tl.scrollTop - tl.clientHeight < 40;
+      tl.innerHTML = events.map(evRow).join("") || `<div class="empty">Ei tapahtumia.</div>`;
+      if (S.follow || atBottom) tl.scrollTop = tl.scrollHeight;
+    }
+    $("updated").textContent = "päivitetty " + clock(new Date());
+  } catch (err) {
+    $("updated").textContent = "yhteys katkesi – onko linjasto dashboard käynnissä?";
+  }
+}
+
+function persist() { try { localStorage.setItem("linjasto.project", S.project); } catch {} }
+try { S.project = localStorage.getItem("linjasto.project"); } catch {}
+$("follow").onclick = () => { S.follow = !S.follow; if (S.follow) S.run = null; tick(); };
+tick(); setInterval(tick, 2000);
+</script>
+</body>
+</html>

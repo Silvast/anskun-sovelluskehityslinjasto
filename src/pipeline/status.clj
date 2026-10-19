@@ -25,7 +25,11 @@
   (when (seq evs)
     (let [start (first evs)
           end (last-of "run-end" evs)
-          phase (last-of "phase" evs)
+          ;; Kun agentti on aloittanut viimeisimmän vaiheen jälkeen, vaihe on agentin työ.
+          phase (let [e (last (filter #(#{"phase" "agent-start"} (:type %)) evs))]
+                  (if (= "agent-start" (:type e))
+                    {:msg (str (:role e) " työskentelee")}
+                    e))
           agent (current-agent evs)
           running? (and (nil? end) (alive? (:pid start)))]
       {:project (:project start)

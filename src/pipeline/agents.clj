@@ -62,7 +62,9 @@
     (case (:type e)
       "assistant" (do (doseq [c (get-in e [:message :content])]
                         (case (:type c)
-                          "tool_use" (events/emit! :tool (tool-event (:name c) (:input c)))
+                          ;; StructuredOutput on Clauden sisäinen tapa palauttaa --json-schema-vastaus.
+                          "tool_use" (when-not (= "StructuredOutput" (:name c))
+                                       (events/emit! :tool (tool-event (:name c) (:input c))))
                           "text" (emit-text! (:text c))
                           nil))
                       state)
