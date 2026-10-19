@@ -63,6 +63,15 @@ Aja projektin hakemistossa (tai anna `--project <hakemisto>`):
 | `bb mark-merged 17` | Actions | Issue saa labelin `agent:in-develop` |
 | `bb test` | | Linjaston omat yksikkötestit |
 
+Mallin voi vaihtaa ajokohtaisesti ilman konfiguraation muokkausta:
+
+```bash
+bb run-issue 13 --model opencode-go/minimax-m3       # implementer
+bb review-loop 7 --model reviewer-b=sonnet --model fixer=opus
+```
+
+Etusijajärjestys: komentorivin `--model` voittaa projektin `.agent/config.edn`:n, ja se voittaa linjaston oletuksen (implementerille `opencode-go/minimax-m3`).
+
 ## Tilakone
 
 | Label | Merkitys |
@@ -93,7 +102,7 @@ Runner valitaan roolikohtaisesti `.agent/config.edn`:ssä:
 | Runner | Komento | Huomioita |
 |---|---|---|
 | `:claude-code` | `claude -p --output-format json` | Katselmoijat saavat `--json-schema`n ja vain lukutyökalut. |
-| `:pi` | `pi <args> -p <prompt>` | Lisäliput `:args`-avaimesta. Tarkista ne komennolla `pi --help`. |
+| `:pi` | `pi --model <malli> <args> -p <prompt>` | Malli `:model`-avaimesta, muut liput `:args`-avaimesta. |
 | `:command` | mikä tahansa | Prompti stdiniin, vastaus stdoutista. Paikallisille malleille. |
 
 Promptit ovat `prompts/`-kansiossa. Projekti voi ylikirjoittaa minkä tahansa niistä tiedostolla `.agent/prompts/<nimi>.md`.

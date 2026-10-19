@@ -39,11 +39,25 @@
      :data (when schema
              (or (:structured_output res) (extract-json (:result res))))}))
 
+(defn without-flag
+  "Poistaa argumenteista lipun ja sen arvon, esim. [\"--model\" \"x\"]."
+  [args flag]
+  (loop [[a & more] args, acc []]
+    (cond (nil? a) acc
+          (= a flag) (recur (rest more) acc)
+          :else (recur more (conj acc a)))))
+
+(defn pi-command
+  "Pi:n print-tila: `pi [--model m] <args> -p <prompt>`. :model voittaa :args-listan --model-lipun."
+  [{:keys [model args]} prompt]
+  (cond-> ["pi"]
+    model (into ["--model" model])
+    true (into (if model (without-flag args "--model") args))
+    true (into ["-p" prompt])))
+
 (defmethod run-agent :pi
-  [{:keys [args]} {:keys [dir prompt schema]}]
-  ;; Pi:n print-tila: `pi -p <prompt>`. Lisäliput (provider, malli) tulevat :args-avaimesta.
-  (let [out (shell/sh! (-> ["pi"] (into args) (into ["-p" prompt]))
-                       {:dir dir :err-inherit? true})]
+  [role {:keys [dir prompt schema]}]
+  (let [out (shell/sh! (pi-command role prompt) {:dir dir :err-inherit? true})]
     {:text out :data (when schema (extract-json out))}))
 
 (defmethod run-agent :command

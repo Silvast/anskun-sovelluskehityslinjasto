@@ -21,18 +21,50 @@ Komennot (ajetaan projektirepon hakemistossa tai --project <hakemisto>):
   review-round <pr>     Yksi katselmointikierros (Actions)
   review-loop <pr>      Kierroksia kunnes valmis (paikallinen testaus)
   mark-merged <pr>      Merkitse PR:n issue developissa olevaksi
-  config                Tulosta yhdistetty konfiguraatio")
+  config                Tulosta yhdistetty konfiguraatio
+
+Yleiset liput:
+
+  --project <hakemisto> Projektirepo (oletus: nykyinen hakemisto)
+  --model <malli>       Implementerin malli tälle ajolle
+  --model <rooli>=<malli>
+                        Minkä tahansa roolin malli: implementer, reviewer-a,
+                        reviewer-b tai fixer. Lipun voi antaa useasti.
+
+Esimerkki:
+  linjasto run-issue 13 --model opencode-go/minimax-m3
+  linjasto review-loop 7 --model reviewer-b=sonnet")
 
 (defn parse-args [args]
   (loop [[a & more :as xs] args, opts {}, pos []]
     (cond
       (empty? xs) (assoc opts :args pos)
       (= a "--project") (recur (rest more) (assoc opts :project (first more)) pos)
+      (= a "--model") (recur (rest more) (update opts :models (fnil conj []) (first more)) pos)
       :else (recur more opts (conj pos a)))))
 
-(defn context [{:keys [project]}]
+(def roles #{"implementer" "reviewer-a" "reviewer-b" "fixer"})
+
+(defn parse-model-override
+  "\"malli\" → [:implementer \"malli\"], \"fixer=sonnet\" → [:fixer \"sonnet\"]."
+  [s]
+  (when (str/blank? s)
+    (throw (ex-info "--model tarvitsee arvon, esim. --model opencode-go/minimax-m3" {})))
+  (let [[role model] (str/split s #"=" 2)]
+    (if (and model (roles role))
+      [(keyword role) model]
+      [:implementer s])))
+
+(defn apply-model-overrides [cfg models]
+  (reduce (fn [cfg s]
+            (let [[role model] (parse-model-override s)]
+              (assoc-in cfg [:roles role :model] model)))
+          cfg
+          models))
+
+(defn context [{:keys [project models]}]
   (let [dir (str (fs/absolutize (or project ".")))
-        cfg (config/load-config dir)]
+        cfg (apply-model-overrides (config/load-config dir) models)]
     {:cfg cfg
      :project-dir dir
      :repo (or (:repo cfg) (gh/repo-name dir))}))
@@ -89,7 +121,8 @@ Komennot (ajetaan projektirepon hakemistossa tai --project <hakemisto>):
       (let [result
             (case cmd
               ("help" "--help" nil) (println usage)
-              "config" (pp/pprint (:cfg (context opts)))
+              "config" (let [{:keys [cfg repo]} (context opts)]
+                         (pp/pprint (assoc cfg :repo repo)))
               "setup-labels" (setup-labels (context opts))
               "next" (doseq [i (queue/ready-issues (:cfg (context opts)) (:repo (context opts)))]
                        (println (str "#" (:number i) "  " (:title i))))

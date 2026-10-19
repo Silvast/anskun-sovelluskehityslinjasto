@@ -89,3 +89,35 @@
 
 (deftest parse-args-test
   (is (= {:project "/p" :args ["42"]} (cli/parse-args ["42" "--project" "/p"]))))
+
+(deftest model-override-test
+  (is (= [:implementer "opencode-go/minimax-m3"] (cli/parse-model-override "opencode-go/minimax-m3")))
+  (is (= [:reviewer-b "sonnet"] (cli/parse-model-override "reviewer-b=sonnet")))
+  (testing "tuntematon etuliite on osa mallin nimeä"
+    (is (= [:implementer "foo=bar"] (cli/parse-model-override "foo=bar"))))
+  (is (= {:models ["a" "fixer=b"] :args ["13"]}
+         (cli/parse-args ["13" "--model" "a" "--model" "fixer=b"])))
+  (let [cfg (cli/apply-model-overrides config/defaults ["m1" "fixer=haiku"])]
+    (is (= "m1" (get-in cfg [:roles :implementer :model])))
+    (is (= "haiku" (get-in cfg [:roles :fixer :model])))
+    (is (= :claude-code (get-in cfg [:roles :fixer :runner])))))
+
+(deftest pi-command-test
+  (is (= ["pi" "-p" "P"] (agents/pi-command {:args []} "P")))
+  (is (= ["pi" "--model" "m" "-p" "P"] (agents/pi-command {:model "m"} "P")))
+  (testing ":model voittaa :args-listan --model-lipun"
+    (is (= ["pi" "--model" "uusi" "--thinking" "high" "-p" "P"]
+           (agents/pi-command {:model "uusi" :args ["--model" "vanha" "--thinking" "high"]} "P")))))
+
+(deftest default-model-test
+  (is (= "opencode-go/minimax-m3" (get-in (config/merge-project-config nil) [:roles :implementer :model])))
+  (testing "projektin :model voittaa oletuksen"
+    (is (= "x" (get-in (config/merge-project-config {:roles {:implementer {:model "x"}}})
+                       [:roles :implementer :model]))))
+  (testing "vanha tapa: --model :args-listassa voittaa oletuksen"
+    (is (= "y" (get-in (config/merge-project-config {:roles {:implementer {:args ["--model" "y"]}}})
+                       [:roles :implementer :model]))))
+  (testing "komentorivi voittaa kaiken"
+    (is (= "z" (get-in (cli/apply-model-overrides
+                        (config/merge-project-config {:roles {:implementer {:model "x"}}}) ["z"])
+                       [:roles :implementer :model])))))

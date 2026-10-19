@@ -40,8 +40,10 @@
             :in-develop "agent:in-develop"}
    :merge {:method "squash" :delete-branch true}
    :roles {:implementer {:runner :pi
-                         ;; Lisäargumentit pi:lle, esim. ["--provider" "anthropic" "--model" "…"].
-                         ;; Tarkista liput komennolla `pi --help`.
+                         ;; Malli. nil = Pi:n oma oletusmalli.
+                         ;; Etusijajärjestys: komentorivin --model > projektin config > tämä oletus.
+                         :model "opencode-go/minimax-m3"
+                         ;; Muut lisäliput pi:lle. Tarkista ne komennolla `pi --help`.
                          :args []}
            :reviewer-a {:runner :claude-code
                         :model "sonnet"
@@ -65,12 +67,25 @@
 (defn project-config-path [project-dir]
   (fs/path project-dir ".agent" "config.edn"))
 
+(defn model-from-args
+  "Palauttaa --model-lipun arvon argumenttilistasta, tai nil."
+  [args]
+  (second (drop-while #(not= "--model" %) args)))
+
+(defn merge-project-config
+  "Yhdistää projektin konfiguraation oletuksiin. Jos projekti antaa implementerin
+  mallin vanhaan tapaan :args-listassa, se voittaa oletusmallin."
+  [project]
+  (let [impl (get-in project [:roles :implementer])
+        legacy-model (when-not (contains? impl :model) (model-from-args (:args impl)))]
+    (cond-> (deep-merge defaults (or project {}))
+      legacy-model (assoc-in [:roles :implementer :model] legacy-model))))
+
 (defn load-config
   "Lukee projektin .agent/config.edn:n (jos on) ja yhdistää sen oletuksiin."
   [project-dir]
-  (let [p (project-config-path project-dir)
-        project (when (fs/exists? p) (edn/read-string (slurp (str p))))]
-    (deep-merge defaults (or project {}))))
+  (let [p (project-config-path project-dir)]
+    (merge-project-config (when (fs/exists? p) (edn/read-string (slurp (str p)))))))
 
 (defn worktree-root [cfg project-dir]
   (or (:worktree-root cfg)

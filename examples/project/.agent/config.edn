@@ -6,8 +6,8 @@
  :max-issues-per-run 3
 
  :roles {:implementer {:runner :pi
-                       ;; Tarkista liput: `pi --help`
-                       :args []}
+                       ;; Oletus on "opencode-go/minimax-m3". Ajokohtaisesti: --model <malli>
+                       :model "opencode-go/minimax-m3"}
          ;; Paikallinen malli myöhemmin, esim. oma wrapper-skripti, joka lukee
          ;; promptin stdinistä:
          ;; :implementer {:runner :command :command ["/home/ansku/bin/local-agent"]}
