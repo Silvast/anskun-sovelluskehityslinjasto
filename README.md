@@ -91,6 +91,32 @@ Etusijajärjestys: komentorivin `--model` voittaa projektin `.agent/config.edn`:
 
 Jos haluat katselmoinnin Actionsiin omalta koneelta, aseta `:review-in-run-next false`.
 
+### Mitä releaseen tulee
+
+Oletuksena kaikki puhtaaksi katselmoitu menee `developiin` ja sitä kautta seuraavaan releaseen.
+Kun haluat päättää itse:
+
+- **Yksittäinen issue:** lisää siihen label `agent:hold`. Linjasto toteuttaa ja katselmoi sen,
+  mutta PR saa labelin `agent:approved` ja jää odottamaan. Mergeä se GitHubissa, kun haluat sen
+  mukaan; seuraava `run-next` tai `bb sync` lisää sen release-PR:ään.
+- **Kaikki:** `:merge-to-develop :manual` projektin `.agent/config.edn`:ssä.
+- **Jo developissa oleva muutos pois:** `git revert` sen squash-commit ja poista rivi release-PR:stä.
+
+### Release notes ja julkaisu
+
+- Aina kun issue lisätään release-PR:ään, agentti (`:release-notes`-rooli) kirjoittaa
+  kuvaukseen englanninkieliset release notesit ja ehdottaa versionostoa (`minor`, jos mukana on
+  uutta käyttäjälle, muuten `patch`). Jos muokkaat notesia käsin, linjasto ei kirjoita niitä yli.
+- Kun mergeät release-PR:n mainiin, seuraava `run-next` tai `bb sync` julkaisee sen:
+  versio `package.json`iin (ja `package-lock.json`iin), uusi osio `CHANGELOG.md`:hen,
+  commit `Release vX.Y.Z` mainiin, tagi, GitHub Release notesien kanssa ja lopuksi main
+  yhdistetään takaisin `developiin`. Release-PR saa labelin `agent:released`.
+- Asetukset: `:release {:notes true :publish true :version-file "package.json" :changelog "CHANGELOG.md" :tag-prefix "v"}`.
+- Jos `main` on suojattu niin, ettei siihen voi pushata, julkaisu tehdään ilman versionostoa
+  ja release-PR:ään tulee siitä maininta.
+
+Kaikki linjaston GitHubiin kirjoittamat tekstit ovat englanniksi; agenttien kieli on `:language`.
+
 ## Seuranta
 
 Orkestroija kirjaa jokaisen vaiheen ja agentin työkalukutsun tapahtumalokiin
@@ -125,6 +151,9 @@ agentin ja viimeisimmät tapahtumat. Agentit ajetaan suoratoistotilassa
 | `agent:merging` | Ei blokkaavia, auto-merge odottaa CI:tä |
 | `agent:in-develop` | Mergetty developiin |
 | `agent:needs-human` | Pysähtyi. Syy on kommentissa. Palauta `agent:ready` yrittääksesi uudelleen. |
+| `agent:hold` | **Sinä** issueen: katselmoi, mutta älä mergeä developiin |
+| `agent:approved` | PR katselmoitu puhtaaksi, odottaa sinun mergeäsi |
+| `agent:released` | Release-PR julkaistu (tagi ja GitHub Release) |
 
 Prioriteetti tulee labeleista `prio:1`, `prio:2`, `prio:3` (sitten vanhin ensin) tai GitHub Projectin kentästä (`:queue {:source :project …}`).
 

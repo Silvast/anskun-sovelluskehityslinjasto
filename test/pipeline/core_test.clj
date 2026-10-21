@@ -82,7 +82,7 @@
                                     :blocking blocking :disputes disputes})]
       (is (str/starts-with? body "<!-- linjasto:round=1 -->"))
       (is (= 1 (review/last-round [body])))
-      (is (str/includes? body "Blokkaavat (2)"))
+      (is (str/includes? body "Blocking (2)"))
       (is (str/includes? body "A2**: ei kuulu")))))
 
 (deftest inline-comments-test
@@ -210,3 +210,37 @@
   (is (= "blokkaavia löydöksiä on yhä 3 kierroksen jälkeen. Ihmisen vuoro."
          (pipeline.dashboard/stop-reason "🛑 Linjasto pysähtyi: blokkaavia löydöksiä on yhä 3 kierroksen jälkeen. Ihmisen vuoro.")))
   (is (nil? (pipeline.dashboard/stop-reason "tavallinen kommentti"))))
+
+(deftest hold-test
+  (is (false? (review/hold? config/defaults ["bug"])))
+  (is (true? (review/hold? config/defaults ["agent:hold"])))
+  (is (true? (review/hold? (assoc config/defaults :merge-to-develop :manual) []))))
+
+(deftest release-notes-test
+  (let [body (pipeline.release/add-line (pipeline.release/initial-body "develop" "main")
+                                        {:issue 13 :pr 14 :title "change timeframe"})
+        b1 (pipeline.release/with-notes body {:version "0.2.0" :bump "minor" :notes "### New\n\n- Thing"})
+        b2 (pipeline.release/with-notes b1 {:version "0.2.0" :bump "minor" :notes "### New\n\n- Other"})]
+    (testing "notes before the Closes list, replaced not duplicated"
+      (is (< (str/index-of b1 "Release notes") (str/index-of b1 "Closes #13")))
+      (is (= 1 (count (re-seq #"Release notes" b2))))
+      (is (str/includes? b2 "- Other")))
+    (is (= "minor" (get-in (pipeline.release/notes-block b1) [:attrs "bump"])))
+    (is (false? (pipeline.release/hand-edited? b1)))
+    (is (true? (pipeline.release/hand-edited? (str/replace b1 "- Thing" "- My own words"))))
+    (is (= "### New\n\n- Thing" (pipeline.release/notes-text b1)))
+    (is (= "- change timeframe" (pipeline.release/notes-text body)))))
+
+(deftest version-test
+  (is (= [0 2 0] (pipeline.release/bump-version [0 1 3] "minor")))
+  (is (= [0 1 4] (pipeline.release/bump-version [0 1 3] "patch")))
+  (is (= [0 0 1] (pipeline.release/bump-version nil "patch")))
+  (is (= [1 2 0] (pipeline.release/max-version [[0 9 9] nil [1 2 0] [1 1 5]])))
+  (is (= [0 1 0] (pipeline.release/parse-version "v0.1.0")))
+  (let [lock "{\n  \"name\": \"x\",\n  \"version\": \"0.1.0\",\n  \"packages\": {\n    \"\": {\n      \"version\": \"0.1.0\"\n    },\n    \"node_modules/y\": {\n      \"version\": \"0.1.0\"\n    }\n  }\n}"]
+    (is (= 2 (count (re-seq #"\"0\.2\.0\"" (pipeline.release/set-json-version lock "0.1.0" "0.2.0")))))
+    (is (str/includes? (pipeline.release/set-json-version lock "0.1.0" "0.2.0") "\"node_modules/y\": {\n      \"version\": \"0.1.0\"")))
+  (is (= "# Changelog\n\n## v0.2.0 – 2026-10-21\n\n- A\n\n## v0.1.0 – x\n"
+         (pipeline.release/prepend-changelog "# Changelog\n\n## v0.1.0 – x\n" "0.2.0" "2026-10-21" "- A")))
+  (is (= "# Changelog\n\n## v0.1.0 – d\n\n- A\n"
+         (pipeline.release/prepend-changelog nil "0.1.0" "d" "- A"))))

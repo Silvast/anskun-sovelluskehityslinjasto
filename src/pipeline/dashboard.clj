@@ -53,13 +53,7 @@
 
 ;; --- Odottaa sinua ----------------------------------------------------------
 
-(defn release-items
-  "Release-PR:n kuvauksen Closes-rivit: [{:issue 13 :pr 14 :title \"…\"}]."
-  [body]
-  (vec (for [[_ issue pr title] (re-seq #"(?m)^- Closes #(\d+)(?: · PR #(\d+))?(?: · (.*))?$" (or body ""))]
-         {:issue (parse-long issue)
-          :pr (some-> pr parse-long)
-          :title (some-> title str/trim)})))
+(def release-items release/listed-items)
 
 (defn stop-reason
   "Linjaston pysähdyskommentista lyhyt syy, tai nil."
@@ -67,19 +61,23 @@
   (when (and body (str/starts-with? body "🛑"))
     (let [fenced (second (re-find #"(?s)```\n?(.*?)```" body))
           text (or (some->> fenced str/split-lines (remove str/blank?) first)
-                   (some-> (re-find #"pysähtyi:\s*(.*)" body) second))]
+                   (some-> (re-find #"(?:pysähtyi|stopped):\s*(.*)" body) second))]
       (some-> text str/trim (#(if (> (count %) 220) (str (subs % 0 219) "…") %))))))
 
 (defn- fetch-attention [project-dir repo]
   (try
     (let [cfg (config/load-config project-dir)
           rel (gh/open-pr-between repo (:base-branch cfg) (get-in cfg [:release :main-branch]))
-          stuck (gh/open-items-with-label repo (get-in cfg [:labels :needs-human]))]
+          stuck (gh/open-items-with-label repo (get-in cfg [:labels :needs-human]))
+          approved (filterv :pr? (gh/open-items-with-label repo (get-in cfg [:labels :approved])))]
       {:release (when rel {:number (:number rel) :url (:url rel)
-                           :items (release-items (:body rel))})
+                           :items (release-items (:body rel))
+                           :version (get-in (release/notes-block (:body rel)) [:attrs "version"])
+                           :hand-edited (boolean (release/hand-edited? (:body rel)))})
        :stuck (mapv (fn [it]
                       (assoc it :reason (some stop-reason (reverse (gh/comment-bodies repo (:number it))))))
-                    stuck)})
+                    stuck)
+       :approved approved})
     (catch Exception e
       {:error (first (str/split-lines (str (ex-message e))))})))
 

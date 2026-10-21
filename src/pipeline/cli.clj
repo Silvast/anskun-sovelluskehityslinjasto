@@ -126,6 +126,7 @@ Esimerkki:
         (review/sweep-merged ctx)
         (events/phase! (str "kierros valmis: " (count done) " issueta, "
                             (count (filter #(= :clean (:review %)) done)) " developiin, "
+                            (count (filter #(= :approved (:review %)) done)) " odottaa mergeäsi, "
                             (count (filter #(or (= :needs-human (:status %))
                                                 (= :needs-human (:review %))) done))
                             " odottaa sinua"))
@@ -133,12 +134,15 @@ Esimerkki:
 
 (defn setup-labels [{:keys [cfg repo]}]
   (let [l (:labels cfg)]
-    (doseq [[k color desc] [[:ready "1d5fc4" "Linjasto saa ottaa tämän työn alle"]
-                            [:working "e9b44c" "Implementer työskentelee"]
-                            [:review "e9b44c" "Review-silmukka käynnissä"]
-                            [:needs-human "c23b31" "Linjasto pysähtyi, ihmisen vuoro"]
-                            [:merging "23864f" "Auto-merge developiin odottaa"]
-                            [:in-develop "23864f" "Mergetty developiin"]]]
+    (doseq [[k color desc] [[:ready "1d5fc4" "The pipeline may pick this up"]
+                            [:working "e9b44c" "Implementer is working"]
+                            [:review "e9b44c" "Review loop running"]
+                            [:needs-human "c23b31" "Pipeline stopped, over to a human"]
+                            [:merging "23864f" "Waiting for auto-merge into develop"]
+                            [:in-develop "23864f" "Merged into develop"]
+                            [:hold "7a4fd0" "Review, but let me merge into develop"]
+                            [:approved "0f8577" "Reviewed, waiting for a human merge into develop"]
+                            [:released "5b6977" "Release published"]]]
       (gh/ensure-label! repo (get l k) color desc)
       (shell/log "Label" (get l k)))))
 

@@ -219,16 +219,23 @@ function renderAttention(p, repo) {
   }
   const rel = a.release, stuck = a.stuck || [];
   const relHtml = rel
-    ? `<h3>Valmiina mainiin <span class="count ready">${rel.items.length}</span></h3>
+    ? `<h3>Valmiina mainiin${rel.version ? ` · v${esc(rel.version)}` : ""} <span class="count ready">${rel.items.length}</span></h3>
        <ul>${rel.items.map(it => `<li><span class="n">${ghLink(repo, "issues", it.issue)}</span><span>${esc(it.title || "")}</span></li>`).join("")}</ul>
-       <a class="cta" href="${esc(rel.url)}" target="_blank" rel="noopener">Avaa release-PR #${rel.number} →</a>`
+       <a class="cta" href="${esc(rel.url)}" target="_blank" rel="noopener">Avaa release-PR #${rel.number} ja release notes →</a>
+       ${rel["hand-edited"] ? `<div class="hint">Release notesia on muokattu käsin, linjasto ei kirjoita niitä yli.</div>` : ""}`
     : `<h3>Valmiina mainiin <span class="count">0</span></h3><div class="hint">Ei release-PR:ää: develop ja main ovat samassa tilassa.</div>`;
   const stuckHtml = stuck.length
     ? `<h3>Pysähtyneet <span class="count hot">${stuck.length}</span></h3>
        <ul>${stuck.map(it => `<li><span class="n">${ghLink(repo, it["pr?"] ? "pull" : "issues", it.number)}</span><span>${esc(it.title)}${it["pr?"] ? " <span class=\"count\">PR</span>" : ""}</span>
          ${it.reason ? `<span class="why">${esc(it.reason)}</span>` : ""}</li>`).join("")}</ul>`
     : `<h3>Pysähtyneet <span class="count">0</span></h3><div class="hint">Mikään ei odota korjausta.</div>`;
-  $("attention").innerHTML = `<div class="att" aria-label="Odottaa sinua"><div>${relHtml}</div><div>${stuckHtml}</div></div>`;
+  const appr = a.approved || [];
+  const apprHtml = appr.length
+    ? `<h3>Odottaa mergeäsi developiin <span class="count ready">${appr.length}</span></h3>
+       <ul>${appr.map(it => `<li><span class="n">${ghLink(repo, "pull", it.number)}</span><span>${esc(it.title)}</span></li>`).join("")}</ul>
+       <div class="hint" style="margin-top:6px">Katselmointi läpäisty. Mergeä GitHubissa, niin muutos tulee seuraavaan releaseen.</div>`
+    : "";
+  $("attention").innerHTML = `<div class="att" aria-label="Odottaa sinua"><div>${relHtml}</div>${apprHtml ? `<div>${apprHtml}</div>` : ""}<div>${stuckHtml}</div></div>`;
 }
 
 function renderRuns(p) {

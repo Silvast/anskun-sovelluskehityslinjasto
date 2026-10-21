@@ -27,7 +27,7 @@
    ;; Agentti ei saa muuttaa näitä polkuja. Muutos pysäyttää työn.
    :protected-paths [".github/workflows/" ".agent/"]
    ;; Kieli, jolla agentit kirjoittavat kommentit ja yhteenvedot.
-   :language "Finnish"
+   :language "English"
    :max-diff-chars 60000
    :queue {:source :labels
            ;; Ensimmäinen löytyvä label määrää prioriteetin. Ilman labelia jonon häntään.
@@ -40,12 +40,29 @@
             :review "agent:review"
             :needs-human "agent:needs-human"
             :merging "agent:merging"
-            :in-develop "agent:in-develop"}
+            :in-develop "agent:in-develop"
+            ;; Issueen: katselmoi, mutta älä mergeä developiin. Sinä mergeät.
+            :hold "agent:hold"
+            ;; PR: katselmointi läpäisty, odottaa sinun mergeäsi developiin.
+            :approved "agent:approved"
+            ;; Release-PR: julkaistu (tagi ja GitHub Release tehty).
+            :released "agent:released"}
+   ;; :auto = linjasto mergeää developiin, kun katselmointi on puhdas.
+   ;; :manual = jokainen PR jää odottamaan sinua (agent:approved). Yksittäisen issuen
+   ;; voi pidättää myös :auto-tilassa labelilla agent:hold.
+   :merge-to-develop :auto
    :merge {:method "squash" :delete-branch true}
    ;; Pysyvä release-PR develop → main, johon kerätään developiin mergetyt issuet.
    :release {:enabled true
              :main-branch "main"
-             :title "Release: develop → main"}
+             :title "Release: develop → main"
+             ;; Agentin kirjoittamat release notes release-PR:ään ja GitHub Releaseen.
+             :notes true
+             ;; Julkaisu, kun release-PR on mergetty mainiin: versio, CHANGELOG, tagi, GitHub Release.
+             :publish true
+             :version-file "package.json"   ; nil = ei version nostoa tiedostoon
+             :changelog "CHANGELOG.md"      ; nil = ei changelogia
+             :tag-prefix "v"}
    :roles {:implementer {:runner :pi
                          ;; Malli. nil = Pi:n oma oletusmalli.
                          ;; Etusijajärjestys: komentorivin --model > projektin config > tämä oletus.
@@ -60,6 +77,10 @@
                         :model "opus"
                         :focus "design, readability, maintainability and security"
                         :allowed-tools read-only-tools}
+           :release-notes {:runner :claude-code
+                           :model "sonnet"
+                           ;; Ei työkaluja: kaikki tieto annetaan promptissa.
+                           :allowed-tools []}
            :fixer {:runner :claude-code
                    :model "sonnet"
                    :allowed-tools ["Read" "Edit" "Write" "Grep" "Glob" "Bash"]}}})

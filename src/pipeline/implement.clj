@@ -35,7 +35,7 @@
              (git/changed-files dir (:remote cfg) (:base-branch cfg))
              (:protected-paths cfg))]
     (when (seq bad)
-      (throw (ex-info (str "Muutoksia suojattuihin polkuihin: " (str/join ", " bad))
+      (throw (ex-info (str "Changes to protected paths: " (str/join ", " bad))
                       {:type ::protected :files bad})))))
 
 (defn- fail! [{:keys [cfg repo]} n e]
@@ -43,10 +43,10 @@
         msg (or (ex-message e) (str e))]
     (events/emit! :error {:msg (str "issue " n " pysähtyi: " (first (str/split-lines msg)))})
     (gh/set-labels! repo n {:remove [(:working labels)] :add [(:needs-human labels)]})
-    (gh/comment! repo n (str "🛑 Linjasto pysähtyi tämän issuen kohdalla.\n\n```\n"
+    (gh/comment! repo n (str "🛑 Pipeline stopped on this issue.\n\n```\n"
                              (shell/tail msg 3000) "\n```\n\n"
-                             "Korjaa tilanne ja palauta label `" (:ready labels)
-                             "`, niin linjasto yrittää uudelleen."))
+                             "Fix the problem and add the label `" (:ready labels)
+                             "` again to retry."))
     {:status :needs-human :issue n :error msg}))
 
 (declare run-issue*)
@@ -89,7 +89,7 @@
               result (agents/run-agent role {:role :implementer :dir wt
                                              :prompt (prompts/prompt project-dir "implementer" vars)})]
           (when-not (git/commit-all! wt (str "#" n ": " (:title issue)))
-            (throw (ex-info "Implementer ei tehnyt muutoksia." {})))
+            (throw (ex-info "The implementer made no changes." {})))
           (check-protected! cfg wt)
           ;; Testit. Jos ne epäonnistuvat, implementer saa yhden korjausyrityksen.
           (let [t1 (run-tests cfg wt)]
@@ -102,15 +102,14 @@
               (check-protected! cfg wt)
               (let [t2 (run-tests cfg wt)]
                 (when-not (:ok? t2)
-                  (throw (ex-info (str "Testit epäonnistuvat yhä:\n" (:output t2)) {}))))))
+                  (throw (ex-info (str "Tests still fail:\n" (:output t2)) {}))))))
           (events/phase! "pushataan ja avataan PR")
           (git/push! wt (:remote cfg) branch)
           (let [pr-n (gh/create-pr! repo {:base (:base-branch cfg)
                                           :head branch
                                           :title (str "#" n ": " (:title issue))
-                                          :body (str "Linjasto toteutti issuen #" n ".\n\n"
-                                                     "Linjasto-issue: #" n "\n\n"
-                                                     "### Implementerin yhteenveto\n\n"
+                                          :body (str "Implemented by the pipeline for #" n ".\n\n"
+                                                     "### Implementer summary\n\n"
                                                      (shell/tail (:text result) 4000))})]
             (gh/set-labels! repo n {:remove [(:working labels)] :add [(:review labels)]})
             ;; PR:n label käynnistää review-workflow'n Actionsissa.

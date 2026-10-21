@@ -86,18 +86,18 @@
         others (remove #(blocking-ids (:id %)) findings)
         disputed (set (map :id disputes))]
     (str "<!-- linjasto:round=" round " -->\n"
-         "### Linjaston katselmointi, kierros " round "/" max-rounds "\n\n"
+         "### Pipeline review, round " round "/" max-rounds "\n\n"
          (if (seq blocking)
-           (str "**Blokkaavat (" (count blocking) ")**, fixer korjaa nämä:\n\n"
+           (str "**Blocking (" (count blocking) ")**, the fixer will address these:\n\n"
                 (str/join "\n" (map finding-line blocking)) "\n\n")
-           "✅ Ei blokkaavia löydöksiä.\n\n")
+           "✅ No blocking findings.\n\n")
          (when (seq disputes)
-           (str "**Reviewer B kiisti**\n\n"
+           (str "**Disputed by reviewer B**\n\n"
                 (str/join "\n" (map #(str "- **" (:id %) "**: " (:reason %)) disputes)) "\n\n"))
          (when (seq others)
-           (str "<details><summary>Muut huomiot (" (count others) ")</summary>\n\n"
+           (str "<details><summary>Other findings (" (count others) ")</summary>\n\n"
                 (str/join "\n" (map #(str (finding-line %)
-                                          (when (disputed (:id %)) " _(kiistetty)_"))
+                                          (when (disputed (:id %)) " _(disputed)_"))
                                     others))
                 "\n\n</details>\n")))))
 
@@ -110,11 +110,11 @@
           :body (str "**" (:id f) " · " (:severity f) "** " (:title f) "\n\n" (:body f))})))
 
 (defn fixer-comment [round {:keys [summary responses]}]
-  (str "### Fixer, kierros " round "\n\n"
+  (str "### Fixer, round " round "\n\n"
        (when-not (str/blank? summary) (str summary "\n\n"))
        (str/join "\n" (for [{:keys [id status note]} responses]
                         (str "- **" id "** "
-                             (if (= "fixed" status) "✅ korjattu" "↩️ ei muutettu")
+                             (if (= "fixed" status) "✅ fixed" "↩️ not changed")
                              ": " note)))))
 
 ;; --- Vaiheet ----------------------------------------------------------------
@@ -141,12 +141,35 @@
   (let [labels (:labels cfg)]
     (doseq [n (remove nil? [pr-n issue-n])]
       (gh/set-labels! repo n {:remove [(:review labels)] :add [(:needs-human labels)]}))
-    (gh/comment! repo pr-n (str "🛑 Linjasto pysähtyi: " reason))
+    (gh/comment! repo pr-n (str "🛑 Pipeline stopped: " reason))
     {:status :needs-human :pr pr-n :reason reason}))
 
-(declare mark-merged)
+(declare mark-merged merge-now!)
+
+(defn- distinct-by [f coll]
+  (vals (into (sorted-map) (map (juxt f identity) coll))))
+
+(defn hold?
+  "Jääkö PR odottamaan ihmisen mergeä: :manual-tila tai issuessa agent:hold."
+  [cfg issue-labels]
+  (boolean (or (= :manual (:merge-to-develop cfg))
+               (contains? (set issue-labels) (get-in cfg [:labels :hold])))))
+
+(defn- approve! [{:keys [cfg repo]} pr-n issue-n]
+  (let [labels (:labels cfg)]
+    (doseq [n (remove nil? [pr-n issue-n])]
+      (gh/set-labels! repo n {:remove [(:review labels)] :add [(:approved labels)]}))
+    (gh/comment! repo pr-n (str "✅ Reviewers found no blocking issues. This PR is waiting for you: "
+                                "merge it into `" (:base-branch cfg) "` when you want it in the next release."))
+    (events/phase! "katselmointi puhdas, odottaa sinun mergeäsi (agent:approved)")
+    {:status :approved :pr pr-n}))
 
 (defn- merge! [{:keys [cfg repo] :as ctx} pr-n issue-n]
+  (if (hold? cfg (when issue-n (gh/label-names (gh/issue repo issue-n))))
+    (approve! ctx pr-n issue-n)
+    (merge-now! ctx pr-n issue-n)))
+
+(defn- merge-now! [{:keys [cfg repo] :as ctx} pr-n issue-n]
   (let [labels (:labels cfg)
         how (gh/merge-pr! repo pr-n (:merge cfg))]
     (doseq [n (remove nil? [pr-n issue-n])]
@@ -177,14 +200,14 @@
     (binding [events/*ctx* (cond-> events/*ctx* issue-n (assoc :issue issue-n))]
     (cond
       (not= "OPEN" (:state pr))
-      {:status :skipped :reason "PR ei ole auki"}
+      {:status :skipped :reason "PR is not open"}
 
       (not ((gh/label-names pr) (:review labels)))
-      {:status :skipped :reason (str "PR:llä ei ole labelia " (:review labels))}
+      {:status :skipped :reason (str "PR does not have the label " (:review labels))}
 
       (> round max-rounds)
-      (stop! ctx pr-n issue-n (str "blokkaavia löydöksiä on yhä " max-rounds
-                                   " kierroksen jälkeen. Ihmisen vuoro."))
+      (stop! ctx pr-n issue-n (str "blocking findings remain after " max-rounds
+                                   " rounds. Over to a human."))
 
       :else
       (try
@@ -215,7 +238,7 @@
                                                                              :focus (:focus role-b)
                                                                              :findings-a (json/generate-string findings-a {:pretty true})))})
               _ (when (or (nil? (:data res-a)) (nil? (:data res-b)))
-                  (throw (ex-info "Katselmoijan vastausta ei voitu jäsentää JSONiksi." {})))
+                  (throw (ex-info "Could not parse the reviewer's answer as JSON." {})))
               findings-b (number-findings "B" (get-in res-b [:data :findings]))
               disputes (vec (get-in res-b [:data :disputes]))
               all (into findings-a findings-b)
@@ -235,7 +258,7 @@
                                            :prompt (prompts/prompt project-dir "fixer"
                                                                    (assoc base-vars :blocking
                                                                           (json/generate-string blocking {:pretty true})))})
-                  changed? (git/commit-all! dir (str "#" (or issue-n pr-n) ": katselmoinnin korjaukset, kierros " round))]
+                  changed? (git/commit-all! dir (str "#" (or issue-n pr-n) ": review fixes, round " round))]
               (gh/comment! repo pr-n (fixer-comment round (or (:data res-f)
                                                               {:summary (shell/tail (:text res-f) 2000)})))
               (if changed?
@@ -244,12 +267,12 @@
                                (git/changed-files dir (:remote cfg) (:base-branch cfg))
                                (:protected-paths cfg))]
                       (when (seq bad)
-                        (throw (ex-info (str "Fixer muutti suojattuja polkuja: " (str/join ", " bad)) {}))))
+                        (throw (ex-info (str "The fixer changed protected paths: " (str/join ", " bad)) {}))))
                     (git/push! dir (:remote cfg) head)
                     {:status :fixed :pr pr-n :round round})
-                (stop! ctx pr-n issue-n "fixer ei tehnyt muutoksia blokkaaviin löydöksiin.")))))
+                (stop! ctx pr-n issue-n "the fixer made no changes for the blocking findings.")))))
         (catch Exception e
-          (stop! ctx pr-n issue-n (str "virhe kierroksella " round ":\n\n```\n"
+          (stop! ctx pr-n issue-n (str "error in round " round ":\n\n```\n"
                                        (shell/tail (ex-message e) 3000) "\n```"))))))))
 
 (defn review-loop
@@ -269,26 +292,29 @@
         issue-n (implement/issue-number-from-branch cfg (:headRefName pr))
         already? (when issue-n ((gh/label-names (gh/issue repo issue-n)) (:in-develop labels)))]
     (doseq [n (remove nil? [pr-n issue-n])]
-      (gh/set-labels! repo n {:remove [(:merging labels) (:review labels)]
+      (gh/set-labels! repo n {:remove [(:merging labels) (:review labels) (:approved labels)]
                               :add [(:in-develop labels)]}))
     (let [release-n (when (and issue-n (get-in cfg [:release :enabled]))
                       (release/ensure-release-pr! ctx {:issue issue-n :pr pr-n
                                                        :title (:title (gh/issue repo issue-n))}))]
       (when (and issue-n (not already?))
         (gh/comment! repo issue-n
-                     (str "✅ Toteutus on mergetty haaraan `" (:baseRefName pr) "` (PR #" pr-n ")."
+                     (str "✅ Merged into `" (:baseRefName pr) "` (PR #" pr-n ")."
                           (if release-n
-                            (str " Issue sulkeutuu, kun release-PR #" release-n " mergetään mainiin.")
-                            " Sulje issue, kun muutos on viety mainiin."))))
+                            (str " This issue closes when release PR #" release-n " is merged into main.")
+                            " Close this issue once the change is in main."))))
       {:status :marked :pr pr-n :issue issue-n :release release-n})))
 
 (defn sweep-merged
   "Ajaa mark-mergedin PR:ille, jotka auto-merge on sittemmin mergennyt
   (label agent:merging jäi paikalleen). Tilaton: turvallinen ajaa milloin vain."
   [{:keys [cfg repo] :as ctx}]
-  (let [prs (gh/merged-prs-with-label repo (get-in cfg [:labels :merging]))]
+  (let [prs (->> [:merging :approved]
+                 (mapcat #(gh/merged-prs-with-label repo (get-in cfg [:labels %])))
+                 (distinct-by :number))]
     (doseq [{:keys [number]} prs]
       (binding [events/*ctx* (assoc events/*ctx* :pr number)]
         (events/phase! (str "PR #" number " on mergetty, päivitetään issue ja release-PR"))
         (mark-merged ctx number)))
-    {:status :swept :count (count prs)}))
+    (let [published (release/publish-merged! ctx)]
+      {:status :swept :count (count prs) :released (mapv :tag published)})))
