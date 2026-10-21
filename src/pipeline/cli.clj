@@ -20,10 +20,12 @@ Komennot (ajetaan projektirepon hakemistossa tai --project <hakemisto>):
   setup-labels          Luo linjaston labelit projektirepoon
   next                  Näytä prioriteettijono
   run-issue <n>         Toteuta issue n omalla koneella ja avaa PR
-  run-next              Ota jonosta enintään :max-issues-per-run issueta (lukittu)
+  run-next              Ota jonosta enintään :max-issues-per-run issueta, toteuta,
+                        katselmoi ja mergeä developiin (lukittu)
   review-round <pr>     Yksi katselmointikierros (Actions)
   review-loop <pr>      Kierroksia kunnes valmis (paikallinen testaus)
   mark-merged <pr>      Merkitse PR:n issue developissa olevaksi
+  sync                  Päivitä auto-mergellä mergetyt PR:t release-PR:ään
   config                Tulosta yhdistetty konfiguraatio
   status [-f]           Viimeisimmän ajon tila; -f päivittää jatkuvasti
   log                   Lokitiedoston polku (esim. tail -f $(linjasto log))
@@ -102,14 +104,32 @@ Esimerkki:
   (or (some-> (first args) parse-long)
       (throw (ex-info "Anna numero, esim. `bb run-issue 42`." {}))))
 
-(defn run-next [{:keys [cfg project-dir] :as ctx}]
+(defn- process-issue
+  "Toteuttaa issuen ja, jos asetus on päällä, katselmoi ja mergeää sen PR:n."
+  [{:keys [cfg] :as ctx} n]
+  (let [res (implement/run-issue ctx n)]
+    (if (and (= :pr-opened (:status res)) (:review-in-run-next cfg))
+      (assoc res :review (:status (review/review-loop ctx (:pr res))))
+      res)))
+
+(defn run-next
+  "Orkestroijan yksi kierros: siivoa mergetyt, käy jono läpi, siivoa uudelleen."
+  [{:keys [cfg project-dir] :as ctx}]
   (with-lock (str (fs/path (fs/temp-dir) (str "linjasto-" (fs/file-name project-dir) ".lock")))
     (fn []
-      (loop [done [], left (:max-issues-per-run cfg)]
-        (let [issue (when (pos? left) (queue/next-issue cfg (:repo ctx)))]
-          (if-not issue
-            (do (events/phase! (str "jono tyhjä, käsitelty " (count done) " issueta")) done)
-            (recur (conj done (implement/run-issue ctx (:number issue))) (dec left))))))))
+      (review/sweep-merged ctx)
+      (let [done (loop [done [], left (:max-issues-per-run cfg)]
+                   (let [issue (when (pos? left) (queue/next-issue cfg (:repo ctx)))]
+                     (if-not issue
+                       done
+                       (recur (conj done (process-issue ctx (:number issue))) (dec left)))))]
+        (review/sweep-merged ctx)
+        (events/phase! (str "kierros valmis: " (count done) " issueta, "
+                            (count (filter #(= :clean (:review %)) done)) " developiin, "
+                            (count (filter #(or (= :needs-human (:status %))
+                                                (= :needs-human (:review %))) done))
+                            " odottaa sinua"))
+        done))))
 
 (defn setup-labels [{:keys [cfg repo]}]
   (let [l (:labels cfg)]
@@ -162,6 +182,7 @@ Esimerkki:
                                (tracked opts cmd (str "PR #" n) #(review/review-round % n)))
               "review-loop" (let [n (need-number args)]
                               (tracked opts cmd (str "PR #" n) #(review/review-loop % n)))
+              "sync" (tracked opts cmd nil review/sweep-merged)
               "mark-merged" (let [n (need-number args)]
                               (tracked opts cmd (str "PR #" n) #(review/mark-merged % n)))
               (do (println usage) (throw (ex-info (str "Tuntematon komento: " cmd) {}))))]

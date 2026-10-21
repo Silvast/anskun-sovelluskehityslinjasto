@@ -19,6 +19,9 @@
    :worktree-root nil
    :max-rounds 3
    :max-issues-per-run 3
+   ;; run-next katselmoi ja mergeää jokaisen PR:n ennen seuraavaa issueta (Claude Code
+   ;; omalla koneella). false: PR jää Actions-workflow'n katselmoitavaksi.
+   :review-in-run-next true
    ;; Esim. "bb test" tai "npm test". nil = ei testiajoa ennen PR:ää.
    :test-cmd nil
    ;; Agentti ei saa muuttaa näitä polkuja. Muutos pysäyttää työn.

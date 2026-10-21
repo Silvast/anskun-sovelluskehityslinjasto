@@ -11,6 +11,7 @@
             [pipeline.queue :as queue]
             [pipeline.release]
             [pipeline.status]
+            [pipeline.dashboard]
             [pipeline.review :as review]))
 
 (deftest deep-merge-test
@@ -196,3 +197,16 @@
     (is (= 60000 (get-in sm [:agent :elapsed-ms])))
     (is (= 13 (:issue sm)))
     (is (= "keskeytynyt" (:state (pipeline.status/summarize evs now (constantly false)))))))
+
+(deftest attention-parsing-test
+  (let [body (pipeline.release/add-line
+              (pipeline.release/add-line (pipeline.release/initial-body "develop" "main")
+                                         {:issue 13 :pr 14 :title "change timeframe"})
+              {:issue 15})]
+    (is (= [{:issue 13 :pr 14 :title "change timeframe"} {:issue 15 :pr nil :title nil}]
+           (pipeline.dashboard/release-items body))))
+  (is (= "Testit epäonnistuvat yhä:"
+         (pipeline.dashboard/stop-reason "🛑 Linjasto pysähtyi tämän issuen kohdalla.\n\n```\nTestit epäonnistuvat yhä:\nFAIL x\n```\n\nKorjaa…")))
+  (is (= "blokkaavia löydöksiä on yhä 3 kierroksen jälkeen. Ihmisen vuoro."
+         (pipeline.dashboard/stop-reason "🛑 Linjasto pysähtyi: blokkaavia löydöksiä on yhä 3 kierroksen jälkeen. Ihmisen vuoro.")))
+  (is (nil? (pipeline.dashboard/stop-reason "tavallinen kommentti"))))

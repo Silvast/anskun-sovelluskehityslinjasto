@@ -281,3 +281,14 @@
                             (str " Issue sulkeutuu, kun release-PR #" release-n " mergetään mainiin.")
                             " Sulje issue, kun muutos on viety mainiin."))))
       {:status :marked :pr pr-n :issue issue-n :release release-n})))
+
+(defn sweep-merged
+  "Ajaa mark-mergedin PR:ille, jotka auto-merge on sittemmin mergennyt
+  (label agent:merging jäi paikalleen). Tilaton: turvallinen ajaa milloin vain."
+  [{:keys [cfg repo] :as ctx}]
+  (let [prs (gh/merged-prs-with-label repo (get-in cfg [:labels :merging]))]
+    (doseq [{:keys [number]} prs]
+      (binding [events/*ctx* (assoc events/*ctx* :pr number)]
+        (events/phase! (str "PR #" number " on mergetty, päivitetään issue ja release-PR"))
+        (mark-merged ctx number)))
+    {:status :swept :count (count prs)}))

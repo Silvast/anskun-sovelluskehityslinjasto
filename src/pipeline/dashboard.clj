@@ -7,7 +7,9 @@
             [org.httpkit.server :as http]
             [pipeline.config :as config]
             [pipeline.events :as events]
+            [pipeline.github :as gh]
             [pipeline.queue :as queue]
+            [pipeline.release :as release]
             [pipeline.status :as status])
   (:import (java.net URLDecoder)))
 
@@ -49,11 +51,59 @@
       (nil? at) {:loading true}
       :else (dissoc cached :loading))))
 
+;; --- Odottaa sinua ----------------------------------------------------------
+
+(defn release-items
+  "Release-PR:n kuvauksen Closes-rivit: [{:issue 13 :pr 14 :title \"…\"}]."
+  [body]
+  (vec (for [[_ issue pr title] (re-seq #"(?m)^- Closes #(\d+)(?: · PR #(\d+))?(?: · (.*))?$" (or body ""))]
+         {:issue (parse-long issue)
+          :pr (some-> pr parse-long)
+          :title (some-> title str/trim)})))
+
+(defn stop-reason
+  "Linjaston pysähdyskommentista lyhyt syy, tai nil."
+  [body]
+  (when (and body (str/starts-with? body "🛑"))
+    (let [fenced (second (re-find #"(?s)```\n?(.*?)```" body))
+          text (or (some->> fenced str/split-lines (remove str/blank?) first)
+                   (some-> (re-find #"pysähtyi:\s*(.*)" body) second))]
+      (some-> text str/trim (#(if (> (count %) 220) (str (subs % 0 219) "…") %))))))
+
+(defn- fetch-attention [project-dir repo]
+  (try
+    (let [cfg (config/load-config project-dir)
+          rel (gh/open-pr-between repo (:base-branch cfg) (get-in cfg [:release :main-branch]))
+          stuck (gh/open-items-with-label repo (get-in cfg [:labels :needs-human]))]
+      {:release (when rel {:number (:number rel) :url (:url rel)
+                           :items (release-items (:body rel))})
+       :stuck (mapv (fn [it]
+                      (assoc it :reason (some stop-reason (reverse (gh/comment-bodies repo (:number it))))))
+                    stuck)})
+    (catch Exception e
+      {:error (first (str/split-lines (str (ex-message e))))})))
+
+(defonce attention-cache (atom {}))
+
+(defn attention-state [project project-dir repo now-ms]
+  (let [{:keys [at loading] :as cached} (get @attention-cache project)]
+    (when (and project-dir repo (not loading)
+               (or (nil? at) (> (- now-ms at) queue-ttl-ms)))
+      (swap! attention-cache assoc-in [project :loading] true)
+      (future
+        (let [res (fetch-attention project-dir repo)]
+          (swap! attention-cache assoc project (assoc res :at (System/currentTimeMillis) :loading false)))))
+    (cond
+      (not (and project-dir repo)) {:error "Näkyy, kun projektissa on ajettu linjastoa tämän version jälkeen."}
+      (nil? at) {:loading true}
+      :else (dissoc cached :loading))))
+
 (defn project-state [project file now-ms alive?]
   (let [rs (events/runs (events/read-events file))
         latest-start (last (keep #(when (:project-dir (first %)) (first %)) rs))]
     {:name project
      :queue (queue-state project (:project-dir latest-start) (:repo latest-start) now-ms)
+     :attention (attention-state project (:project-dir latest-start) (:repo latest-start) now-ms)
      :runs (mapv #(run-summary % now-ms alive?) (reverse (take-last 40 rs)))}))
 
 (defn state [now-ms alive?]

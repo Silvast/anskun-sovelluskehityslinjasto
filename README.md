@@ -57,7 +57,8 @@ Aja projektin hakemistossa (tai anna `--project <hakemisto>`):
 | `bb setup-labels` | kone | Luo labelit |
 | `bb next` | kone | Prioriteettijono |
 | `bb run-issue 42` | kone | Toteuta issue ja avaa PR |
-| `bb run-next` | kone | Ota jonosta enintään `:max-issues-per-run` issueta, lukittuna |
+| `bb run-next` | kone | Orkestroija: ota jonosta enintään `:max-issues-per-run` issueta, toteuta, katselmoi ja mergeä developiin (lukittu) |
+| `bb sync` | kone | Päivitä auto-mergellä myöhemmin mergetyt PR:t release-PR:ään |
 | `bb review-round 17` | Actions | Yksi katselmointikierros |
 | `bb review-loop 17` | kone | Kierroksia kunnes valmis, testaukseen ilman Actionsia |
 | `bb mark-merged 17` | Actions | Issue saa labelin `agent:in-develop` |
@@ -74,6 +75,21 @@ bb review-loop 7 --model reviewer-b=sonnet --model fixer=opus
 ```
 
 Etusijajärjestys: komentorivin `--model` voittaa projektin `.agent/config.edn`:n, ja se voittaa linjaston oletuksen (implementerille `opencode-go/minimax-m3`).
+
+## Päivän kulku
+
+1. **Yöllä** systemd-timer käynnistää `run-next`in. Se ottaa jonosta issuen, toteuttaa sen (Pi),
+   avaa PR:n, katselmoi sen (Claude Code: reviewer A, reviewer B, fixer) ja mergeää `developiin`.
+   Sitten seuraava issue, kunnes jono on tyhjä tai `:max-issues-per-run` täynnä.
+2. Jokainen `developiin` mergetty issue lisätään **release-PR:ään** (`develop → main`).
+   Kierroksen alussa ja lopussa `run-next` päivittää myös auto-mergellä myöhemmin mergetyt PR:t.
+3. Jumiin jäänyt issue (testit, kolme kierrosta blokkaavia, suojattu polku) saa labelin
+   `agent:needs-human`, ja kierros jatkaa seuraavaan.
+4. **Aamulla** dashboardin *Valmiina mainiin* -osio näyttää release-PR:n issuet ja
+   *Pysähtyneet*-osio jumiin jääneet syineen. Katso `develop` ja mergeä release-PR GitHubissa:
+   listan issuet sulkeutuvat.
+
+Jos haluat katselmoinnin Actionsiin omalta koneelta, aseta `:review-in-run-next false`.
 
 ## Seuranta
 

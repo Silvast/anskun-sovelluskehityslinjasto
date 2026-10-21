@@ -67,6 +67,26 @@
   (first (shell/json! ["gh" "pr" "list" "--repo" repo "--head" head "--base" base
                        "--state" "open" "--json" "number,url,body"])))
 
+(defn merged-prs-with-label
+  "Mergetyt PR:t, joilla on label (esim. agent:merging)."
+  [repo label]
+  (shell/json! ["gh" "pr" "list" "--repo" repo "--state" "merged" "--label" label
+                "--limit" "50" "--json" "number,title"]))
+
+(defn open-items-with-label
+  "Avoimet issuet JA PR:t, joilla on label. REST palauttaa molemmat."
+  [repo label]
+  (->> (shell/json! ["gh" "api" (str "repos/" repo "/issues?state=open&per_page=50&labels="
+                                     (enc label))])
+       (mapv (fn [i] {:number (:number i)
+                      :title (:title i)
+                      :url (:html_url i)
+                      :pr? (boolean (:pull_request i))}))))
+
+(defn comment-bodies [repo n]
+  (->> (shell/json! ["gh" "api" (str "repos/" repo "/issues/" n "/comments?per_page=100")])
+       (mapv :body)))
+
 (defn edit-pr-body! [repo n body]
   (shell/sh! ["gh" "pr" "edit" n "--repo" repo "--body-file" "-"] {:in body}))
 

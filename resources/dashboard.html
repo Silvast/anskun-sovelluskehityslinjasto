@@ -89,6 +89,17 @@ h2{font:700 .74rem/1 var(--mono);text-transform:uppercase;letter-spacing:.12em;c
 .run .when{font:400 .76rem var(--mono);color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
 .run .sub{grid-column:2/4;font:400 .78rem var(--mono);color:var(--muted)}
 
+.att{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin-bottom:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px 28px}
+.att h3{margin:0 0 8px;font:600 .95rem var(--body);display:flex;align-items:center;gap:8px}
+.att .count{font:600 .72rem var(--mono);padding:1px 7px;border-radius:999px;background:var(--sunk);color:var(--muted)}
+.att .count.hot{background:color-mix(in srgb,var(--stop) 14%,transparent);color:var(--stop)}
+.att .count.ready{background:color-mix(in srgb,var(--go) 14%,transparent);color:var(--go)}
+.att ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.att li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 10px;font-size:.92rem}
+.att li .n{font:500 .82rem var(--mono);font-variant-numeric:tabular-nums}
+.att li .why{grid-column:2;font:400 .78rem var(--mono);color:var(--stop);overflow-wrap:anywhere}
+.att .hint{font-size:.85rem;color:var(--muted)}
+.att .cta{display:inline-block;margin-top:10px;font:600 .85rem var(--body)}
 .queue{display:flex;flex-direction:column;margin-bottom:22px;border:1px dashed var(--line);border-radius:8px;background:var(--surface)}
 .q{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;padding:9px 12px;border-bottom:1px dashed var(--line)}
 .q:last-child{border-bottom:0}
@@ -111,6 +122,7 @@ h2{font:700 .74rem/1 var(--mono);text-transform:uppercase;letter-spacing:.12em;c
 
 <main id="main">
   <section aria-label="Valittu ajo">
+    <div id="attention"></div>
     <div id="now"></div>
     <div class="timeline-head"><h2>Tapahtumat</h2>
       <button class="follow" id="follow" type="button" aria-pressed="true" title="Seuraa uusinta ajoa ja vieritä alas">Seuraa uusinta</button></div>
@@ -199,6 +211,26 @@ function renderQueue(p, repo) {
   $("queue").innerHTML = html;
 }
 
+function renderAttention(p, repo) {
+  const a = p.attention || {};
+  if (a.error || a.loading) {
+    $("attention").innerHTML = `<div class="att"><div class="hint">${a.error ? esc(a.error) : "Haetaan release-PR:ää ja pysähtyneitä töitä GitHubista…"}</div></div>`;
+    return;
+  }
+  const rel = a.release, stuck = a.stuck || [];
+  const relHtml = rel
+    ? `<h3>Valmiina mainiin <span class="count ready">${rel.items.length}</span></h3>
+       <ul>${rel.items.map(it => `<li><span class="n">${ghLink(repo, "issues", it.issue)}</span><span>${esc(it.title || "")}</span></li>`).join("")}</ul>
+       <a class="cta" href="${esc(rel.url)}" target="_blank" rel="noopener">Avaa release-PR #${rel.number} →</a>`
+    : `<h3>Valmiina mainiin <span class="count">0</span></h3><div class="hint">Ei release-PR:ää: develop ja main ovat samassa tilassa.</div>`;
+  const stuckHtml = stuck.length
+    ? `<h3>Pysähtyneet <span class="count hot">${stuck.length}</span></h3>
+       <ul>${stuck.map(it => `<li><span class="n">${ghLink(repo, it["pr?"] ? "pull" : "issues", it.number)}</span><span>${esc(it.title)}${it["pr?"] ? " <span class=\"count\">PR</span>" : ""}</span>
+         ${it.reason ? `<span class="why">${esc(it.reason)}</span>` : ""}</li>`).join("")}</ul>`
+    : `<h3>Pysähtyneet <span class="count">0</span></h3><div class="hint">Mikään ei odota korjausta.</div>`;
+  $("attention").innerHTML = `<div class="att" aria-label="Odottaa sinua"><div>${relHtml}</div><div>${stuckHtml}</div></div>`;
+}
+
 function renderRuns(p) {
   $("runs").innerHTML = p.runs.map(r => `<button class="run" aria-current="${r.run === S.run}" data-run="${esc(r.run)}">
       <span class="lamp ${lampClass(r)}"></span>
@@ -222,7 +254,8 @@ async function tick() {
     const p = currentProject();
     if (S.follow || !currentRun()) S.run = (p.runs[0] || {}).run;
     renderTabs(); renderRuns(p); renderNow(currentRun());
-    renderQueue(p, (p.runs.find(r => r.repo) || {}).repo);
+    const repo = (p.runs.find(r => r.repo) || {}).repo;
+    renderQueue(p, repo); renderAttention(p, repo);
     $("follow").setAttribute("aria-pressed", S.follow);
     if (S.run) {
       const { events } = await (await fetch(`/api/run?project=${encodeURIComponent(S.project)}&run=${encodeURIComponent(S.run)}`, {cache:"no-store"})).json();

@@ -18,12 +18,14 @@
                 :task (apply cli/-main "next" *command-line-args*)}
   run-issue    {:doc "Toteuta issue omalla koneella: bb run-issue 42"
                 :task (apply cli/-main "run-issue" *command-line-args*)}
-  run-next     {:doc "Ota jonosta seuraavat issuet (systemd-timer)"
+  run-next     {:doc "Orkestroija: jono → toteutus → katselmointi → develop"
                 :task (apply cli/-main "run-next" *command-line-args*)}
   review-round {:doc "Yksi katselmointikierros: bb review-round 17"
                 :task (apply cli/-main "review-round" *command-line-args*)}
   review-loop  {:doc "Kierroksia kunnes valmis (paikallinen testaus)"
                 :task (apply cli/-main "review-loop" *command-line-args*)}
+  sync         {:doc "Päivitä auto-mergellä mergetyt PR:t release-PR:ään"
+                :task (apply cli/-main "sync" *command-line-args*)}
   mark-merged  {:doc "Merkitse PR:n issue developissa olevaksi"
                 :task (apply cli/-main "mark-merged" *command-line-args*)}
   test         {:doc "Aja yksikkötestit"
