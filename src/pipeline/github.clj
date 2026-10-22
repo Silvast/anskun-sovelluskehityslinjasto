@@ -26,10 +26,13 @@
 (defn label-names [x]
   (set (map :name (:labels x))))
 
-(defn add-labels! [repo n labels]
+(defn add-labels!
+  "Lisää labelit REST-rajapinnalla. GitHub luo puuttuvan labelin automaattisesti,
+  joten uusi linjaston label ei kaada ajoa, vaikka setup-labels olisi ajamatta."
+  [repo n labels]
   (when (seq labels)
-    (shell/sh! (into ["gh" "issue" "edit" n "--repo" repo]
-                     (mapcat (fn [l] ["--add-label" l]) labels)))))
+    (shell/sh! (into ["gh" "api" "-X" "POST" (str "repos/" repo "/issues/" n "/labels")]
+                     (mapcat (fn [l] ["-f" (str "labels[]=" l)]) labels)))))
 
 (defn remove-labels!
   "Poistaa labelit. Puuttuva label ei ole virhe."
@@ -74,10 +77,11 @@
                 "--limit" "50" "--json" "number,title"]))
 
 (defn open-items-with-label
-  "Avoimet issuet JA PR:t, joilla on label. REST palauttaa molemmat."
+  "Avoimet issuet JA PR:t, joilla on label. REST palauttaa molemmat.
+  Suodatus tehdään itse: GitHubin labels-hakuparametri palauttaa välillä vanhentuneen tuloksen."
   [repo label]
-  (->> (shell/json! ["gh" "api" (str "repos/" repo "/issues?state=open&per_page=50&labels="
-                                     (enc label))])
+  (->> (shell/json! ["gh" "api" (str "repos/" repo "/issues?state=open&per_page=100")])
+       (filter (fn [i] (some #(= label (:name %)) (:labels i))))
        (mapv (fn [i] {:number (:number i)
                       :title (:title i)
                       :url (:html_url i)

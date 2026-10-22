@@ -244,3 +244,19 @@
          (pipeline.release/prepend-changelog "# Changelog\n\n## v0.1.0 – x\n" "0.2.0" "2026-10-21" "- A")))
   (is (= "# Changelog\n\n## v0.1.0 – d\n\n- A\n"
          (pipeline.release/prepend-changelog nil "0.1.0" "d" "- A"))))
+
+(deftest release-plan-test
+  (testing "ensimmäinen yritys: PR:n version= käytetään"
+    (is (= {:old [0 1 0] :new "0.2.0" :resume? false}
+           (pipeline.release/release-plan [0 1 0] {"version" "0.2.0" "bump" "minor"} #{"v0.1.0"} "v"))))
+  (testing "keskeytynyt julkaisu: tagi on jo, ei nostoa uudelleen"
+    (is (= {:old [0 2 0] :new "0.2.0" :resume? true}
+           (pipeline.release/release-plan [0 2 0] {"version" "0.2.0" "bump" "minor"} #{"v0.1.0" "v0.2.0"} "v"))))
+  (testing "ilman version=-tietoa nostetaan bumpin mukaan"
+    (is (= "0.1.1" (:new (pipeline.release/release-plan [0 1 0] {} #{} "v"))))))
+
+(deftest stop-comment-test
+  (let [c (review/stop-comment-for-issue config/defaults 34 "the fixer made no changes.")]
+    (is (str/includes? c "PR #34"))
+    (is (str/includes? c "agent:ready"))
+    (is (= "the fixer made no changes." (pipeline.dashboard/stop-reason c)))))

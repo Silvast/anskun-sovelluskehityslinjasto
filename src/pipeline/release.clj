@@ -242,6 +242,18 @@
           (when-not (zero? exit)
             (str "developiin ei voitu pushata: " (str/trim (str err)))))))))
 
+(defn release-plan
+  "Mihin versioon julkaistaan. Release-PR:n notes-osion version= on ensisijainen.
+  Jos sen tagi on jo olemassa, edellinen julkaisu keskeytyi kesken: jatketaan siitä
+  nostamatta versiota uudelleen (:resume? true)."
+  [current attrs tags tag-prefix]
+  (let [planned (parse-version (get attrs "version"))
+        resume? (boolean (and planned (tags (str tag-prefix (version-str planned)))))
+        new (cond resume? planned
+                  (and planned (pos? (compare planned (or current [0 0 0])))) planned
+                  :else (bump-version current (get attrs "bump" "patch")))]
+    {:old current :new (version-str new) :resume? resume?}))
+
 (defn publish!
   "Julkaisee mergetyn release-PR:n: versio, CHANGELOG, tagi, GitHub Release, develop-synkka."
   [{:keys [cfg repo project-dir] :as ctx} {:keys [number body]}]
@@ -249,9 +261,10 @@
     (let [{:keys [main-branch tag-prefix]} (:release cfg)
           remote (:remote cfg)
           labels (:labels cfg)
-          bump (get-in (notes-block body) [:attrs "bump"] "patch")
-          old (current-version ctx)
-          new (version-str (bump-version old bump))
+          attrs (:attrs (notes-block body))
+          cur (current-version ctx) ; hakee myös tagit
+          tags (set (str/split-lines (:out (git/git project-dir "tag" "--list" (str tag-prefix "*")))))
+          {:keys [old new resume?]} (release-plan cur attrs tags tag-prefix)
           tag (str tag-prefix new)
           notes (notes-text body)
           wt (str (fs/path (config/worktree-root cfg project-dir) "release"))]
@@ -261,7 +274,8 @@
       (fs/create-dirs (fs/parent wt))
       (git/git! project-dir "worktree" "add" "-B" "linjasto-release" wt (str remote "/" main-branch))
       (try
-        (let [bumped? (when old (release-commit! ctx wt (version-str old) new notes))]
+        (let [bumped? (cond resume? true
+                            old (release-commit! ctx wt (version-str old) new notes))]
           (when-not (zero? (:exit (git/git wt "rev-parse" "-q" "--verify" (str "refs/tags/" tag))))
             (git/git! wt "tag" "-a" tag "-m" (str "Release " tag))
             (git/git! wt "push" remote tag))

@@ -136,12 +136,26 @@
               (git/git! project-dir "worktree" "add" "-B" head wt (str remote "/" head))))
         wt))))
 
+(defn stop-comment-for-issue
+  "Issueen tuleva pysähdyskommentti: syy, linkki PR:ään ja miten jatketaan."
+  [cfg pr-n reason]
+  (let [{:keys [ready needs-human]} (:labels cfg)]
+    (str "🛑 Pipeline stopped: " reason "\n\n"
+         "The review findings and the fixer's notes are on PR #" pr-n ".\n\n"
+         "**What to do next** (pick one):\n"
+         "- Fix the PR yourself and merge it into `" (:base-branch cfg) "`.\n"
+         "- Answer the open question in this issue's description, close PR #" pr-n
+         ", remove `" needs-human "` and add `" ready "` to let the pipeline start over.\n"
+         "- Close the issue if it is no longer needed.")))
+
 (defn- stop! [{:keys [cfg repo]} pr-n issue-n reason]
   (events/emit! :error {:msg (str "pysähtyi: " (first (str/split-lines reason)))})
   (let [labels (:labels cfg)]
     (doseq [n (remove nil? [pr-n issue-n])]
       (gh/set-labels! repo n {:remove [(:review labels)] :add [(:needs-human labels)]}))
     (gh/comment! repo pr-n (str "🛑 Pipeline stopped: " reason))
+    (when issue-n
+      (gh/comment! repo issue-n (stop-comment-for-issue cfg pr-n reason)))
     {:status :needs-human :pr pr-n :reason reason}))
 
 (declare mark-merged merge-now!)
