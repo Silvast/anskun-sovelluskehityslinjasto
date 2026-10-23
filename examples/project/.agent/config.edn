@@ -18,4 +18,8 @@
  ;; Prioriteetti labeleista (oletus) tai GitHub Projectista:
  ;; :queue {:source :project
  ;;         :project {:owner "Silvast" :number 1 :field "Priority" :order ["P0" "P1" "P2"]}}
+
+ ;; GitHub Projectin kortti seuraa labelia (Ready, In progress, In review, Done).
+ ;; Vaatii: gh auth refresh -s project. Sarakkeet: ks. src/pipeline/config.clj.
+ ;; :project-status {:owner "Silvast" :number 2}
  }

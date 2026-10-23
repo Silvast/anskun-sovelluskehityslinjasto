@@ -141,6 +141,15 @@ Toisesta terminaalista: `bb status -f` näyttää käynnissä olevan issuen, vai
 agentin ja viimeisimmät tapahtumat. Agentit ajetaan suoratoistotilassa
 (`pi --mode json`, `claude --output-format stream-json`), joten työkalukutsut näkyvät heti.
 
+## GitHub Projectin sarakkeet
+
+Labelit ovat linjaston tila. Jos haluat myös Project-taulun kortin liikkuvan, lisää projektin
+`.agent/config.edn`:iin `:project-status {:owner "Silvast" :number 2}` ja anna gh:lle oikeus:
+`gh auth refresh -s project`. Kun linjasto lisää issueen labelin, kortti siirtyy:
+`agent:ready` → Ready, `agent:working` → In progress, `agent:review`/`approved`/`merging` → In review,
+`agent:in-develop` → Done. `agent:needs-human` jättää kortin paikalleen. Sarakkeiden nimet voi
+vaihtaa `:project-status :columns`-asetuksella. Synkan virhe ei pysäytä ajoa, vaan näkyy lokissa ⚠️-rivinä.
+
 ## Tilakone
 
 | Label | Merkitys |

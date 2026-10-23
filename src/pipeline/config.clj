@@ -50,6 +50,21 @@
    ;; :auto = linjasto mergeää developiin, kun katselmointi on puhdas.
    ;; :manual = jokainen PR jää odottamaan sinua (agent:approved). Yksittäisen issuen
    ;; voi pidättää myös :auto-tilassa labelilla agent:hold.
+   ;; Valinnainen GitHub Projectin Status-synkka. Päällä, kun projekti tunnetaan:
+   ;; :owner/:number tässä tai jonon :queue :project -asetuksessa. Vaatii gh:lle
+   ;; project-oikeuden (gh auth refresh -s project). Sarakkeet nimillä, ei id:illä.
+   :project-status {:enabled true
+                    :owner nil
+                    :number nil
+                    :field "Status"
+                    ;; label → sarake. Labelit ilman saraketta eivät siirrä korttia
+                    ;; (needs-human jättää kortin paikalleen, punainen label kertoo tilan).
+                    :columns {:ready "Ready"
+                              :working "In progress"
+                              :review "In review"
+                              :approved "In review"
+                              :merging "In review"
+                              :in-develop "Done"}}
    :merge-to-develop :auto
    :merge {:method "squash" :delete-branch true}
    ;; Pysyvä release-PR develop → main, johon kerätään developiin mergetyt issuet.

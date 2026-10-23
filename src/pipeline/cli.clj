@@ -7,6 +7,7 @@
             [pipeline.events :as events]
             [pipeline.github :as gh]
             [pipeline.implement :as implement]
+            [pipeline.project :as project]
             [pipeline.queue :as queue]
             [pipeline.review :as review]
             [pipeline.shell :as shell]
@@ -155,7 +156,8 @@ Esimerkki:
   "Ajaa komennon tapahtumalokin kanssa: run-start, vaiheet, run-end."
   [opts command target f]
   (let [ctx (context opts)]
-    (binding [events/*ctx* (events/start-run! (:project-dir ctx) command target (:repo ctx))]
+    (binding [events/*ctx* (events/start-run! (:project-dir ctx) command target (:repo ctx))
+              gh/*label-hook* (project/label-hook (:cfg ctx))]
       (let [res (try (f ctx)
                      (catch Exception e
                        (events/emit! :run-end {:status "virhe"})

@@ -12,6 +12,7 @@
             [pipeline.release]
             [pipeline.status]
             [pipeline.dashboard]
+            [pipeline.project]
             [pipeline.review :as review]))
 
 (deftest deep-merge-test
@@ -260,3 +261,20 @@
     (is (str/includes? c "PR #34"))
     (is (str/includes? c "agent:ready"))
     (is (= "the fixer made no changes." (pipeline.dashboard/stop-reason c)))))
+
+(deftest failure-comment-test
+  (let [c (implement/failure-comment config/defaults "The implementer made no changes."
+                                     "Already done.\nThe start date is six weeks.")]
+    (is (str/includes? c "> Already done.\n> The start date is six weeks."))
+    (is (= "The implementer made no changes." (pipeline.dashboard/stop-reason c))))
+  (is (not (str/includes? (implement/failure-comment config/defaults "boom" nil) "final message"))))
+
+(deftest project-status-test
+  (is (nil? (pipeline.project/settings config/defaults)))
+  (let [cfg (config/deep-merge config/defaults {:queue {:project {:owner "Silvast" :number 2}}})]
+    (is (= {:owner "Silvast" :number 2}
+           (select-keys (pipeline.project/settings cfg) [:owner :number])))
+    (is (= "In progress" (pipeline.project/column-for cfg ["agent:working"])))
+    (is (= "In review" (pipeline.project/column-for cfg ["agent:review"])))
+    (is (nil? (pipeline.project/column-for cfg ["agent:needs-human"])))
+    (is (nil? (pipeline.project/settings (assoc-in cfg [:project-status :enabled] false))))))

@@ -26,13 +26,18 @@
 (defn label-names [x]
   (set (map :name (:labels x))))
 
+(def ^:dynamic *label-hook*
+  "Kutsutaan (f repo n labels) labelien lisäyksen jälkeen, esim. projektin Status-synkka."
+  nil)
+
 (defn add-labels!
   "Lisää labelit REST-rajapinnalla. GitHub luo puuttuvan labelin automaattisesti,
   joten uusi linjaston label ei kaada ajoa, vaikka setup-labels olisi ajamatta."
   [repo n labels]
   (when (seq labels)
     (shell/sh! (into ["gh" "api" "-X" "POST" (str "repos/" repo "/issues/" n "/labels")]
-                     (mapcat (fn [l] ["-f" (str "labels[]=" l)]) labels)))))
+                     (mapcat (fn [l] ["-f" (str "labels[]=" l)]) labels)))
+    (when *label-hook* (*label-hook* repo n labels))))
 
 (defn remove-labels!
   "Poistaa labelit. Puuttuva label ei ole virhe."

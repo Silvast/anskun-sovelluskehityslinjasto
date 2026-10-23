@@ -38,15 +38,23 @@
       (throw (ex-info (str "Changes to protected paths: " (str/join ", " bad))
                       {:type ::protected :files bad})))))
 
+(defn failure-comment
+  "Issueen tuleva pysähdyskommentti. details = agentin oma selitys, jos sellainen on."
+  [cfg msg details]
+  (str "🛑 Pipeline stopped on this issue.\n\n```\n" (shell/tail msg 3000) "\n```\n\n"
+       (when-not (str/blank? details)
+         (str "**The implementer's final message:**\n\n"
+              (->> (str/split-lines (shell/tail details 3000)) (map #(str "> " %)) (str/join "\n"))
+              "\n\n"))
+       "Fix the problem (or close the issue if it is already done) and add the label `"
+       (get-in cfg [:labels :ready]) "` again to retry."))
+
 (defn- fail! [{:keys [cfg repo]} n e]
   (let [labels (:labels cfg)
         msg (or (ex-message e) (str e))]
     (events/emit! :error {:msg (str "issue " n " pysähtyi: " (first (str/split-lines msg)))})
     (gh/set-labels! repo n {:remove [(:working labels)] :add [(:needs-human labels)]})
-    (gh/comment! repo n (str "🛑 Pipeline stopped on this issue.\n\n```\n"
-                             (shell/tail msg 3000) "\n```\n\n"
-                             "Fix the problem and add the label `" (:ready labels)
-                             "` again to retry."))
+    (gh/comment! repo n (failure-comment cfg msg (:details (ex-data e))))
     {:status :needs-human :issue n :error msg}))
 
 (declare run-issue*)
@@ -89,7 +97,9 @@
               result (agents/run-agent role {:role :implementer :dir wt
                                              :prompt (prompts/prompt project-dir "implementer" vars)})]
           (when-not (git/commit-all! wt (str "#" n ": " (:title issue)))
-            (throw (ex-info "The implementer made no changes." {})))
+            ;; Agentin oma selitys mukaan kommenttiin: usein "tämä on jo tehty" tai kysymys.
+            (throw (ex-info "The implementer made no changes."
+                            {:details (str/trim (str (:text result)))})))
           (check-protected! cfg wt)
           ;; Testit. Jos ne epäonnistuvat, implementer saa yhden korjausyrityksen.
           (let [t1 (run-tests cfg wt)]
